@@ -1,6 +1,7 @@
 using backend.Data;
 using backend.DTOs;
 using backend.Models;
+using backend.Models.WebSocket;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,11 +17,13 @@ public class ColumnController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IBoardAccessService _boardAccessService;
+    private readonly IWebSocketService _webSocketService;
 
-    public ColumnController(ApplicationDbContext context, IBoardAccessService boardAccessService)
+    public ColumnController(ApplicationDbContext context, IBoardAccessService boardAccessService, IWebSocketService webSocketService)
     {
         _context = context;
         _boardAccessService = boardAccessService;
+        _webSocketService = webSocketService;
     }
 
     private int GetUserId()
@@ -140,6 +143,16 @@ public class ColumnController : ControllerBase
             Tasks = new List<TaskDto>()
         };
 
+        // Broadcast column created
+        await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
+        {
+            Type = "column.created",
+            BoardId = boardId,
+            Payload = columnDto,
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
+
         return CreatedAtAction(nameof(GetColumn), new { boardId = boardId, id = column.Id }, columnDto);
     }
 
@@ -167,6 +180,20 @@ public class ColumnController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        // Broadcast column updated
+        await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
+        {
+            Type = "column.updated",
+            BoardId = boardId,
+            Payload = new {
+                Id = id,
+                Title = request.Title,
+                Position = request.Position
+            },
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
+
         return NoContent();
     }
 
@@ -190,6 +217,16 @@ public class ColumnController : ControllerBase
 
         _context.Columns.Remove(column);
         await _context.SaveChangesAsync();
+
+        // Broadcast column deleted
+        await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
+        {
+            Type = "column.deleted",
+            BoardId = boardId,
+            Payload = new { Id = id },
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
 
         return NoContent();
     }

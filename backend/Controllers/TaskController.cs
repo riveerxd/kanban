@@ -1,6 +1,7 @@
 using backend.Data;
 using backend.DTOs;
 using backend.Models;
+using backend.Models.WebSocket;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,11 +17,13 @@ public class TaskController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IBoardAccessService _boardAccessService;
+    private readonly IWebSocketService _webSocketService;
 
-    public TaskController(ApplicationDbContext context, IBoardAccessService boardAccessService)
+    public TaskController(ApplicationDbContext context, IBoardAccessService boardAccessService, IWebSocketService webSocketService)
     {
         _context = context;
         _boardAccessService = boardAccessService;
+        _webSocketService = webSocketService;
     }
 
     private int GetUserId()
@@ -118,6 +121,13 @@ public class TaskController : ControllerBase
             return NotFound();
         }
 
+        var userId = GetUserId();
+
+        // Get boardId for WebSocket broadcast
+        var column = await _context.Columns
+            .Include(c => c.Board)
+            .FirstOrDefaultAsync(c => c.Id == columnId);
+
         var task = new Models.Task
         {
             ColumnId = columnId,
@@ -141,6 +151,19 @@ public class TaskController : ControllerBase
             UpdatedAt = task.UpdatedAt
         };
 
+        // Broadcast task created
+        if (column != null)
+        {
+            await _webSocketService.BroadcastToBoardAsync(column.BoardId, new WsMessage
+            {
+                Type = "task.created",
+                BoardId = column.BoardId,
+                Payload = taskDto,
+                UserId = userId,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
         return CreatedAtAction(nameof(GetTask), new { id = task.Id }, taskDto);
     }
 
@@ -152,7 +175,12 @@ public class TaskController : ControllerBase
             return NotFound();
         }
 
-        var task = await _context.Tasks.FindAsync(id);
+        var userId = GetUserId();
+
+        var task = await _context.Tasks
+            .Include(t => t.Column)
+                .ThenInclude(c => c.Board)
+            .FirstOrDefaultAsync(t => t.Id == id);
 
         if (task == null)
         {
@@ -165,6 +193,22 @@ public class TaskController : ControllerBase
         task.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        // Broadcast task updated
+        await _webSocketService.BroadcastToBoardAsync(task.Column.BoardId, new WsMessage
+        {
+            Type = "task.updated",
+            BoardId = task.Column.BoardId,
+            Payload = new {
+                Id = id,
+                ColumnId = task.ColumnId,
+                Title = request.Title,
+                Description = request.Description,
+                Position = request.Position
+            },
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
 
         return NoContent();
     }
@@ -182,13 +226,19 @@ public class TaskController : ControllerBase
             return BadRequest("Invalid column");
         }
 
-        var task = await _context.Tasks.FindAsync(id);
+        var userId = GetUserId();
+
+        var task = await _context.Tasks
+            .Include(t => t.Column)
+                .ThenInclude(c => c.Board)
+            .FirstOrDefaultAsync(t => t.Id == id);
 
         if (task == null)
         {
             return NotFound();
         }
 
+        var boardId = task.Column.BoardId;
         var oldColumnId = task.ColumnId;
         var oldPosition = task.Position;
         var newColumnId = request.ColumnId;
@@ -270,6 +320,21 @@ public class TaskController : ControllerBase
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            // Broadcast task moved
+            await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
+            {
+                Type = "task.moved",
+                BoardId = boardId,
+                Payload = new {
+                    Id = id,
+                    OldColumnId = oldColumnId,
+                    NewColumnId = newColumnId,
+                    NewPosition = newPosition
+                },
+                UserId = userId,
+                Timestamp = DateTime.UtcNow
+            });
+
             return NoContent();
         }
         catch
@@ -287,15 +352,36 @@ public class TaskController : ControllerBase
             return NotFound();
         }
 
-        var task = await _context.Tasks.FindAsync(id);
+        var userId = GetUserId();
+
+        var task = await _context.Tasks
+            .Include(t => t.Column)
+                .ThenInclude(c => c.Board)
+            .FirstOrDefaultAsync(t => t.Id == id);
 
         if (task == null)
         {
             return NotFound();
         }
 
+        var boardId = task.Column.BoardId;
+        var columnId = task.ColumnId;
+
         _context.Tasks.Remove(task);
         await _context.SaveChangesAsync();
+
+        // Broadcast task deleted
+        await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
+        {
+            Type = "task.deleted",
+            BoardId = boardId,
+            Payload = new {
+                Id = id,
+                ColumnId = columnId
+            },
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
 
         return NoContent();
     }

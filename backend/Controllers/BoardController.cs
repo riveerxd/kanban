@@ -1,6 +1,7 @@
 using backend.Data;
 using backend.DTOs;
 using backend.Models;
+using backend.Models.WebSocket;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,11 +17,13 @@ public class BoardController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IBoardAccessService _boardAccessService;
+    private readonly IWebSocketService _webSocketService;
 
-    public BoardController(ApplicationDbContext context, IBoardAccessService boardAccessService)
+    public BoardController(ApplicationDbContext context, IBoardAccessService boardAccessService, IWebSocketService webSocketService)
     {
         _context = context;
         _boardAccessService = boardAccessService;
+        _webSocketService = webSocketService;
     }
 
     private int GetUserId()
@@ -177,6 +180,16 @@ public class BoardController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        // Broadcast board update
+        await _webSocketService.BroadcastToBoardAsync(id, new WsMessage
+        {
+            Type = "board.updated",
+            BoardId = id,
+            Payload = new { Title = request.Title },
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
+
         return NoContent();
     }
 
@@ -296,6 +309,20 @@ public class BoardController : ControllerBase
         _context.BoardMembers.Add(boardMember);
         await _context.SaveChangesAsync();
 
+        // Broadcast member joined
+        await _webSocketService.BroadcastToBoardAsync(id, new WsMessage
+        {
+            Type = "member.joined",
+            BoardId = id,
+            Payload = new {
+                UserId = invitedUser.Id,
+                Username = invitedUser.Username,
+                Email = invitedUser.Email
+            },
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
+
         return Ok();
     }
 
@@ -319,8 +346,19 @@ public class BoardController : ControllerBase
             return NotFound();
         }
 
+        var removedUserId = boardMember.UserId;
         _context.BoardMembers.Remove(boardMember);
         await _context.SaveChangesAsync();
+
+        // Broadcast member left
+        await _webSocketService.BroadcastToBoardAsync(id, new WsMessage
+        {
+            Type = "member.left",
+            BoardId = id,
+            Payload = new { UserId = removedUserId },
+            UserId = userId,
+            Timestamp = DateTime.UtcNow
+        });
 
         return NoContent();
     }

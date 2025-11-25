@@ -21,6 +21,9 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 // Register Board Access Service
 builder.Services.AddScoped<IBoardAccessService, BoardAccessService>();
 
+// Register WebSocket Service
+builder.Services.AddSingleton<IWebSocketService, WebSocketService>();
+
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT secret not configured");
@@ -54,7 +57,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost:3000")
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 
@@ -66,6 +70,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// Start WebSocket server
+var wsService = app.Services.GetRequiredService<IWebSocketService>();
+await wsService.StartAsync();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
