@@ -29,15 +29,14 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, isDragging = false, isEditing = false, onSave, onCancel, onDelete, onEdit, lock, onRequestLock, onReleaseLock }: TaskCardProps) {
-  const [editTitle, setEditTitle] = useState(task.title);
-  const [editDescription, setEditDescription] = useState(task.description || "");
-  const [isHovered, setIsHovered] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalEditTitle, setModalEditTitle] = useState(task.title);
   const [modalEditDescription, setModalEditDescription] = useState(task.description || "");
   const [isEditingInModal, setIsEditingInModal] = useState(false);
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const [editDescription, setEditDescription] = useState(task.description || "");
   const modalTitleRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const {
     attributes,
@@ -117,17 +116,10 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
           rows={2}
         />
         <div className="flex gap-2 mt-2">
-          <Button
-            onClick={handleSave}
-            size="sm"
-          >
+          <Button onClick={handleSave} size="sm">
             Save
           </Button>
-          <Button
-            onClick={onCancel}
-            variant="outline"
-            size="sm"
-          >
+          <Button onClick={onCancel} variant="outline" size="sm">
             Cancel
           </Button>
         </div>
@@ -142,9 +134,6 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
         style={style}
         {...attributes}
         {...listeners}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onDoubleClick={onEdit}
         onClick={(e) => {
           if (!isEditing && !(e.target as HTMLElement).closest('button')) {
             setIsModalOpen(true);
@@ -168,21 +157,6 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
             <span>{lock.mine ? 'Editing' : lock.username}</span>
           </div>
         )}
-        {isHovered && onDelete && !lock && (
-          <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            variant="ghost"
-            size="sm"
-            className="absolute top-2 right-2 p-1 h-auto w-auto hover:bg-destructive/10 text-destructive z-10"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </Button>
-        )}
         <h3 className="font-medium text-foreground pr-6">
           {task.title}
         </h3>
@@ -197,7 +171,7 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
           setIsEditingInModal(false);
         }
       }}>
-        <DialogContent className="aspect-square w-[min(90vw,90vh)] max-w-[min(90vw,90vh)] h-[min(90vw,90vh)] max-h-[min(90vw,90vh)] flex flex-col p-6">
+        <DialogContent className="max-w-2xl w-full max-h-[90vh] flex flex-col p-6">
           <DialogHeader className="flex-shrink-0">
             {isEditingInModal ? (
               <Input

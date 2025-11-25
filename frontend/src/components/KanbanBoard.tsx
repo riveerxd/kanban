@@ -52,6 +52,8 @@ export function KanbanBoard() {
   const [newColumnTitle, setNewColumnTitle] = useState("");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showBoardSelector, setShowBoardSelector] = useState(false);
+  const [isRenamingBoard, setIsRenamingBoard] = useState(false);
+  const [boardTitle, setBoardTitle] = useState("");
   const creatingBoardRef = useRef(false);
   const columnsRef = useRef<ColumnType[]>([]);
   const [locks, setLocks] = useState<Record<string, {username: string, mine: boolean}>>({});
@@ -68,13 +70,15 @@ export function KanbanBoard() {
       return;
     }
 
-    console.log('WebSocket message received:', message);
-
     switch (message.type) {
       case 'task.created': {
         const task = message.payload;
         setColumns(prevColumns => prevColumns.map(col => {
           if (col.id === task.columnId.toString()) {
+            const taskExists = col.tasks.some(t => t.id === task.id.toString());
+            if (taskExists) {
+              return col;
+            }
             return {
               ...col,
               tasks: [...col.tasks, {
@@ -165,7 +169,9 @@ export function KanbanBoard() {
       }
 
       case 'board.updated': {
-        // Optionally handle board title updates
+        if (message.payload?.title) {
+          setBoardTitle(message.payload.title);
+        }
         break;
       }
 
@@ -238,6 +244,7 @@ export function KanbanBoard() {
       const board = await api.getBoard(token, newBoardId);
       setBoardId(board.id);
       setBoardOwnerId(board.userId);
+      setBoardTitle(board.title);
       localStorage.setItem("currentBoardId", board.id.toString());
       setColumns(
         board.columns.map((col) => ({
@@ -289,6 +296,7 @@ export function KanbanBoard() {
           const updatedBoard = await api.getBoard(token, newBoard.id);
           setBoardId(updatedBoard.id);
           setBoardOwnerId(updatedBoard.userId);
+          setBoardTitle(updatedBoard.title);
           setColumns(
             updatedBoard.columns.map((col) => ({
               id: col.id.toString(),
@@ -319,6 +327,7 @@ export function KanbanBoard() {
 
           setBoardId(board.id);
           setBoardOwnerId(board.userId);
+          setBoardTitle(board.title);
           localStorage.setItem("currentBoardId", board.id.toString());
           setColumns(
             board.columns.map((col) => ({
@@ -429,20 +438,15 @@ export function KanbanBoard() {
     setActiveTask(null);
     const { active, over } = event;
 
-    console.log("🎯 DragEnd fired:", { activeId: active.id, overId: over?.id });
-
     if (!over) {
-      console.log("❌ No over element");
       return;
     }
 
     if (!token) {
-      console.log("❌ No token");
       return;
     }
 
     if (!boardId) {
-      console.log("❌ No boardId");
       return;
     }
 
@@ -458,7 +462,6 @@ export function KanbanBoard() {
     );
 
     if (!targetColumn) {
-      console.log("❌ Target column not found");
       return;
     }
 
@@ -466,16 +469,12 @@ export function KanbanBoard() {
     const columnId = parseInt(targetColumn.id);
     const taskPosition = targetColumn.tasks.findIndex((t) => t.id === activeId);
 
-    console.log("🚀 Making API call:", { taskId, columnId, taskPosition });
-
     // Persist to backend - backend handles all position recalculations
     try {
       await api.moveTask(token, taskId, {
         columnId: columnId,
         position: taskPosition,
       });
-
-      console.log("✅ API call successful, reloading board");
 
       // Reload board to get consistent state from backend
       const updatedBoard = await api.getBoard(token, boardId);
@@ -494,7 +493,7 @@ export function KanbanBoard() {
         }))
       );
     } catch (error) {
-      console.error("❌ Failed to move task:", error);
+      console.error("Failed to move task:", error);
       // Reload board on error to revert to consistent state
       try {
         const board = await api.getBoard(token, boardId);
@@ -685,6 +684,17 @@ export function KanbanBoard() {
     return null;
   }
 
+  const handleRenameBoard = async () => {
+    if (!token || !boardId || !boardTitle.trim()) return;
+
+    try {
+      await api.updateBoard(token, boardId, { title: boardTitle.trim() });
+      setIsRenamingBoard(false);
+    } catch (error) {
+      console.error("Failed to rename board:", error);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     router.push("/login");
@@ -703,9 +713,54 @@ export function KanbanBoard() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground tracking-tight">
-                  Kanban Board
-                </h1>
+                {isRenamingBoard ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={boardTitle}
+                      onChange={(e) => setBoardTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRenameBoard();
+                        if (e.key === "Escape") {
+                          setIsRenamingBoard(false);
+                          setBoardTitle(boards.find(b => b.id === boardId)?.title || "");
+                        }
+                      }}
+                      className="h-8 text-xl font-bold"
+                      autoFocus
+                    />
+                    <Button onClick={handleRenameBoard} size="sm" variant="ghost">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </Button>
+                    <Button onClick={() => {
+                      setIsRenamingBoard(false);
+                      setBoardTitle(boards.find(b => b.id === boardId)?.title || "");
+                    }} size="sm" variant="ghost">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-xl font-bold text-foreground tracking-tight">
+                      {boardTitle || "Kanban Board"}
+                    </h1>
+                    {boardId && (
+                      <Button
+                        onClick={() => setIsRenamingBoard(true)}
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 hover:bg-muted"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </Button>
+                    )}
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">Organize your tasks</p>
               </div>
             </div>

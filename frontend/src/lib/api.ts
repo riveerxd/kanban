@@ -1,5 +1,20 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let errorMessage = `Request failed with status ${response.status}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorData.error || errorMessage;
+    } catch {
+      const textError = await response.text();
+      if (textError) errorMessage = textError;
+    }
+    throw new Error(errorMessage);
+  }
+  return response.json();
+}
+
 export interface RegisterData {
   email: string;
   username: string;
@@ -110,12 +125,7 @@ export async function registerUser(data: RegisterData): Promise<AuthResponse> {
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Registration failed");
-  }
-
-  return response.json();
+  return handleResponse<AuthResponse>(response);
 }
 
 // Board API
@@ -124,8 +134,7 @@ export async function getBoards(token: string): Promise<BoardDto[]> {
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to fetch boards");
-  return response.json();
+  return handleResponse<BoardDto[]>(response);
 }
 
 export async function getBoard(token: string, id: number): Promise<BoardDto> {
@@ -133,8 +142,7 @@ export async function getBoard(token: string, id: number): Promise<BoardDto> {
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to fetch board");
-  return response.json();
+  return handleResponse<BoardDto>(response);
 }
 
 export async function createBoard(
@@ -147,8 +155,7 @@ export async function createBoard(
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) throw new Error("Failed to create board");
-  return response.json();
+  return handleResponse<BoardDto>(response);
 }
 
 export async function updateBoard(
@@ -162,7 +169,9 @@ export async function updateBoard(
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) throw new Error("Failed to update board");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }
 
 export async function deleteBoard(token: string, id: number): Promise<void> {
@@ -171,7 +180,9 @@ export async function deleteBoard(token: string, id: number): Promise<void> {
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to delete board");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }
 
 // Column API
@@ -183,8 +194,7 @@ export async function getColumns(
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to fetch columns");
-  return response.json();
+  return handleResponse<ColumnDto[]>(response);
 }
 
 export async function createColumn(
@@ -198,8 +208,7 @@ export async function createColumn(
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) throw new Error("Failed to create column");
-  return response.json();
+  return handleResponse<ColumnDto>(response);
 }
 
 export async function updateColumn(
@@ -214,7 +223,9 @@ export async function updateColumn(
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) throw new Error("Failed to update column");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }
 
 export async function deleteColumn(
@@ -227,7 +238,9 @@ export async function deleteColumn(
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to delete column");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }
 
 // Task API
@@ -239,8 +252,7 @@ export async function getTasks(
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to fetch tasks");
-  return response.json();
+  return handleResponse<TaskDto[]>(response);
 }
 
 export async function createTask(
@@ -254,8 +266,7 @@ export async function createTask(
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) throw new Error("Failed to create task");
-  return response.json();
+  return handleResponse<TaskDto>(response);
 }
 
 export async function updateTask(
@@ -269,7 +280,9 @@ export async function updateTask(
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) throw new Error("Failed to update task");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }
 
 export async function moveTask(
@@ -283,7 +296,9 @@ export async function moveTask(
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) throw new Error("Failed to move task");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }
 
 export async function deleteTask(token: string, id: number): Promise<void> {
@@ -292,7 +307,9 @@ export async function deleteTask(token: string, id: number): Promise<void> {
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to delete task");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }
 
 // Board Sharing API
@@ -304,8 +321,7 @@ export async function getBoardMembers(
     headers: getAuthHeaders(token),
   });
 
-  if (!response.ok) throw new Error("Failed to fetch board members");
-  return response.json();
+  return handleResponse<BoardMembersResponse>(response);
 }
 
 export async function inviteBoardMember(
@@ -320,8 +336,7 @@ export async function inviteBoardMember(
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || "Failed to invite board member");
+    await handleResponse(response);
   }
 }
 
@@ -338,5 +353,7 @@ export async function removeBoardMember(
     }
   );
 
-  if (!response.ok) throw new Error("Failed to remove board member");
+  if (!response.ok) {
+    await handleResponse(response);
+  }
 }

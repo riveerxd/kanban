@@ -81,7 +81,8 @@ export function useWebSocket({ boardId, token, onMessage }: UseWebSocketOptions)
         socketRef.current = null;
       }
     };
-  }, [boardId, token, onMessage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, token]);
 
   const requestLock = useCallback((resourceType: string, resourceId: number) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
