@@ -44,7 +44,7 @@
 }
 
 :root {
-  /* Base Colors - Black & White */
+  /* Base Colors */
   --color-black: #000000;
   --color-white: #ffffff;
   --color-gray-100: #f5f5f5;
@@ -57,7 +57,7 @@
   --color-gray-800: #262626;
   --color-gray-900: #171717;
 
-  /* Accent Color - Change this to reskin the entire app */
+  /* Accent Color */
   --color-accent-primary: #3b82f6; /* blue-500 */
   --color-accent-hover: #2563eb; /* blue-600 */
   --color-accent-light: #60a5fa; /* blue-400 */
@@ -65,7 +65,7 @@
 
   --radius: 0.625rem;
 
-  /* Theme Variables - Dark/Black Theme */
+  /* Theme Variables */
   --background: var(--color-black);
   --foreground: var(--color-white);
   --card: var(--color-gray-900);
@@ -101,7 +101,7 @@
 }
 
 .dark {
-  /* Light theme (if someone adds .dark class) */
+  /* Light theme */
   --background: var(--color-white);
   --foreground: var(--color-black);
   --card: var(--color-white);

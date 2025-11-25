@@ -23,9 +23,12 @@ interface TaskCardProps {
   onCancel?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
+  lock?: { username: string; mine: boolean };
+  onRequestLock?: (resourceType: string, resourceId: number) => void;
+  onReleaseLock?: (resourceType: string, resourceId: number) => void;
 }
 
-export function TaskCard({ task, isDragging = false, isEditing = false, onSave, onCancel, onDelete, onEdit }: TaskCardProps) {
+export function TaskCard({ task, isDragging = false, isEditing = false, onSave, onCancel, onDelete, onEdit, lock, onRequestLock, onReleaseLock }: TaskCardProps) {
   const [editTitle, setEditTitle] = useState(task.title);
   const [editDescription, setEditDescription] = useState(task.description || "");
   const [isHovered, setIsHovered] = useState(false);
@@ -70,6 +73,13 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
     setModalEditTitle(task.title);
     setModalEditDescription(task.description || "");
   }, [task.title, task.description]);
+
+  // Auto-enter edit mode when lock is granted and modal is open
+  useEffect(() => {
+    if (isModalOpen && lock?.mine && !isEditingInModal) {
+      setIsEditingInModal(true);
+    }
+  }, [lock?.mine, isModalOpen, isEditingInModal]);
 
   const handleSave = () => {
     if (editTitle.trim() && onSave) {
@@ -145,9 +155,20 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
           hover:shadow-md transition-shadow
           relative group
           ${isDragging ? "opacity-50" : ""}
+          ${lock && !lock.mine ? "opacity-60" : ""}
         `}
       >
-        {isHovered && onDelete && (
+        {lock && (
+          <div className={`absolute top-1 right-1 flex items-center gap-1 px-2 py-0.5 rounded text-xs ${
+            lock.mine ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+          }`}>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+            <span>{lock.mine ? 'Editing' : lock.username}</span>
+          </div>
+        )}
+        {isHovered && onDelete && !lock && (
           <Button
             onClick={(e) => {
               e.stopPropagation();
@@ -170,6 +191,9 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
       <Dialog open={isModalOpen} onOpenChange={(open) => {
         setIsModalOpen(open);
         if (!open) {
+          if (isEditingInModal && onReleaseLock) {
+            onReleaseLock('task', parseInt(task.id)); // Release lock when closing modal during edit
+          }
           setIsEditingInModal(false);
         }
       }}>
@@ -236,6 +260,9 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
                     if (onSave && modalEditTitle.trim()) {
                       onSave(modalEditTitle.trim(), modalEditDescription.trim());
                       setIsEditingInModal(false);
+                      if (onReleaseLock) {
+                        onReleaseLock('task', parseInt(task.id)); // Release lock after save
+                      }
                     }
                   }}
                   size="sm"
@@ -247,6 +274,9 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
                     setModalEditTitle(task.title);
                     setModalEditDescription(task.description || "");
                     setIsEditingInModal(false);
+                    if (onReleaseLock) {
+                      onReleaseLock('task', parseInt(task.id)); // Release lock on cancel
+                    }
                   }}
                   variant="outline"
                   size="sm"
@@ -256,14 +286,23 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
               </div>
             ) : (
               <Button
-                onClick={() => setIsEditingInModal(true)}
+                onClick={() => {
+                  // Request lock for modal editing (not inline edit)
+                  if (onRequestLock) {
+                    onRequestLock('task', parseInt(task.id));
+                  } else {
+                    // Fallback if onRequestLock not provided
+                    setIsEditingInModal(true);
+                  }
+                }}
                 variant="outline"
                 size="sm"
+                disabled={lock && !lock.mine}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
-                Edit Task
+                {lock && !lock.mine ? `Locked by ${lock.username}` : 'Edit Task'}
               </Button>
             )}
             {onDelete && !isEditingInModal && (

@@ -18,9 +18,12 @@ interface ColumnProps {
   onEditColumn?: (title: string) => void;
   onDeleteTask?: (taskId: string) => void;
   onEditTask?: (taskId: string, title: string, description: string) => void;
+  locks: Record<string, {username: string, mine: boolean}>;
+  onRequestLock: (resourceType: string, resourceId: number) => void;
+  onReleaseLock: (resourceType: string, resourceId: number) => void;
 }
 
-export function Column({ column, onAddTask, editingTaskId, onEditingChange, onDeleteColumn, onEditColumn, onDeleteTask, onEditTask }: ColumnProps) {
+export function Column({ column, onAddTask, editingTaskId, onEditingChange, onDeleteColumn, onEditColumn, onDeleteTask, onEditTask, locks, onRequestLock, onReleaseLock }: ColumnProps) {
   const { setNodeRef } = useDroppable({
     id: column.id,
   });
@@ -134,9 +137,19 @@ export function Column({ column, onAddTask, editingTaskId, onEditingChange, onDe
                 }
                 onEditingChange(null);
               }}
-              onCancel={() => onEditingChange(null)}
+              onCancel={() => {
+                onReleaseLock('task', parseInt(task.id));
+                onEditingChange(null);
+              }}
               onDelete={() => onDeleteTask?.(task.id)}
-              onEdit={() => onEditingChange(task.id)}
+              onEdit={() => {
+                // For inline edit: request lock AND set editing state
+                onRequestLock('task', parseInt(task.id));
+                onEditingChange(task.id);
+              }}
+              lock={locks[`task_${task.id}`]}
+              onRequestLock={onRequestLock}
+              onReleaseLock={onReleaseLock}
             />
           ))}
 

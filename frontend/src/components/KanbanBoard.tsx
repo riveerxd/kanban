@@ -54,6 +54,7 @@ export function KanbanBoard() {
   const [showBoardSelector, setShowBoardSelector] = useState(false);
   const creatingBoardRef = useRef(false);
   const columnsRef = useRef<ColumnType[]>([]);
+  const [locks, setLocks] = useState<Record<string, {username: string, mine: boolean}>>({});
 
   // Keep columnsRef in sync with columns state
   useEffect(() => {
@@ -173,11 +174,49 @@ export function KanbanBoard() {
         // Optionally show notification
         break;
       }
+
+      case 'lock.granted': {
+        const { resourceType, resourceId } = message.payload;
+        setLocks(prev => ({
+          ...prev,
+          [`${resourceType}_${resourceId}`]: { username: user?.username || 'You', mine: true }
+        }));
+        // Note: We don't auto-set editingTaskId here anymore
+        // TaskCard's modal will handle entering edit mode via its own useEffect
+        break;
+      }
+
+      case 'lock.acquired': {
+        const { resourceType, resourceId, username, userId } = message.payload;
+        // Only update if it's not the current user (they already got lock.granted)
+        if (userId !== user?.id) {
+          setLocks(prev => ({
+            ...prev,
+            [`${resourceType}_${resourceId}`]: { username, mine: false }
+          }));
+        }
+        break;
+      }
+
+      case 'lock.released': {
+        const { resourceType, resourceId } = message.payload;
+        setLocks(prev => {
+          const newLocks = { ...prev };
+          delete newLocks[`${resourceType}_${resourceId}`];
+          return newLocks;
+        });
+        break;
+      }
+
+      case 'lock.denied': {
+        alert(`Locked by ${message.payload.lockedBy}`);
+        break;
+      }
     }
-  }, [user?.id, boardId, token]);
+  }, [user?.id, user?.username, boardId, token]);
 
   // Setup WebSocket connection
-  const { isConnected } = useWebSocket({
+  const { isConnected, requestLock, releaseLock } = useWebSocket({
     boardId,
     token,
     onMessage: handleWebSocketMessage
@@ -585,6 +624,10 @@ export function KanbanBoard() {
           ),
         }))
       );
+
+      // Release lock after edit
+      releaseLock('task', parseInt(taskId));
+      setEditingTaskId(null);
     } catch (error) {
       console.error("Failed to update task:", error);
     }
@@ -783,6 +826,9 @@ export function KanbanBoard() {
                 onEditColumn={(title) => handleEditColumn(column.id, title)}
                 onDeleteTask={handleDeleteTask}
                 onEditTask={handleEditTask}
+                locks={locks}
+                onRequestLock={requestLock}
+                onReleaseLock={releaseLock}
               />
             ))}
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8181';
 
@@ -83,5 +83,23 @@ export function useWebSocket({ boardId, token, onMessage }: UseWebSocketOptions)
     };
   }, [boardId, token, onMessage]);
 
-  return { isConnected, socket: socketRef.current };
+  const requestLock = useCallback((resourceType: string, resourceId: number) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'lock.request',
+        payload: { resourceType, resourceId }
+      }));
+    }
+  }, []);
+
+  const releaseLock = useCallback((resourceType: string, resourceId: number) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'lock.release',
+        payload: { resourceType, resourceId }
+      }));
+    }
+  }, []);
+
+  return { isConnected, requestLock, releaseLock };
 }
