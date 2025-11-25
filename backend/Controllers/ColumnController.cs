@@ -28,8 +28,9 @@ public class ColumnController : ControllerBase
 
     private int GetUserId()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.Parse(userIdClaim ?? "0");
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        return int.Parse(userIdClaim);
     }
 
     [HttpGet]
@@ -143,7 +144,6 @@ public class ColumnController : ControllerBase
             Tasks = new List<TaskDto>()
         };
 
-        // Broadcast column created
         await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
         {
             Type = "column.created",
@@ -180,7 +180,6 @@ public class ColumnController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // Broadcast column updated
         await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
         {
             Type = "column.updated",
@@ -218,7 +217,6 @@ public class ColumnController : ControllerBase
         _context.Columns.Remove(column);
         await _context.SaveChangesAsync();
 
-        // Broadcast column deleted
         await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
         {
             Type = "column.deleted",

@@ -28,8 +28,9 @@ public class TaskController : ControllerBase
 
     private int GetUserId()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.Parse(userIdClaim ?? "0");
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        return int.Parse(userIdClaim);
     }
 
     private async Task<bool> UserHasAccessToColumn(int columnId)
@@ -123,7 +124,6 @@ public class TaskController : ControllerBase
 
         var userId = GetUserId();
 
-        // Get boardId for WebSocket broadcast
         var column = await _context.Columns
             .Include(c => c.Board)
             .FirstOrDefaultAsync(c => c.Id == columnId);
@@ -151,7 +151,6 @@ public class TaskController : ControllerBase
             UpdatedAt = task.UpdatedAt
         };
 
-        // Broadcast task created
         if (column != null)
         {
             await _webSocketService.BroadcastToBoardAsync(column.BoardId, new WsMessage
@@ -194,7 +193,6 @@ public class TaskController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // Broadcast task updated
         await _webSocketService.BroadcastToBoardAsync(task.Column.BoardId, new WsMessage
         {
             Type = "task.updated",
@@ -320,7 +318,6 @@ public class TaskController : ControllerBase
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            // Broadcast task moved
             await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
             {
                 Type = "task.moved",
@@ -370,7 +367,6 @@ public class TaskController : ControllerBase
         _context.Tasks.Remove(task);
         await _context.SaveChangesAsync();
 
-        // Broadcast task deleted
         await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
         {
             Type = "task.deleted",

@@ -28,15 +28,15 @@ public class BoardController : ControllerBase
 
     private int GetUserId()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.Parse(userIdClaim ?? "0");
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        return int.Parse(userIdClaim);
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<BoardDto>>> GetBoards()
     {
         var userId = GetUserId();
-        // Get boards where user is owner OR member
         var boards = await _context.Boards
             .Where(b => b.UserId == userId || b.Members.Any(m => m.UserId == userId))
             .Include(b => b.Columns)
@@ -80,7 +80,6 @@ public class BoardController : ControllerBase
     {
         var userId = GetUserId();
 
-        // Check if user has access to board
         if (!await _boardAccessService.UserHasAccessToBoard(userId, id))
         {
             return NotFound();
@@ -160,7 +159,6 @@ public class BoardController : ControllerBase
     {
         var userId = GetUserId();
 
-        // Check if user has access to board
         if (!await _boardAccessService.UserHasAccessToBoard(userId, id))
         {
             return NotFound();
@@ -198,7 +196,6 @@ public class BoardController : ControllerBase
     {
         var userId = GetUserId();
 
-        // Only owner can delete board
         var board = await _context.Boards
             .Where(b => b.Id == id && b.UserId == userId)
             .FirstOrDefaultAsync();
@@ -214,13 +211,11 @@ public class BoardController : ControllerBase
         return NoContent();
     }
 
-    // Board sharing endpoints
     [HttpGet("{id}/members")]
     public async Task<ActionResult<BoardMembersResponse>> GetBoardMembers(int id)
     {
         var userId = GetUserId();
 
-        // Check if user has access to board
         if (!await _boardAccessService.UserHasAccessToBoard(userId, id))
         {
             return NotFound();
@@ -260,7 +255,6 @@ public class BoardController : ControllerBase
     {
         var userId = GetUserId();
 
-        // Check if user has access to board
         if (!await _boardAccessService.UserHasAccessToBoard(userId, id))
         {
             return NotFound();
@@ -331,7 +325,6 @@ public class BoardController : ControllerBase
     {
         var userId = GetUserId();
 
-        // Check if user has access to board
         if (!await _boardAccessService.UserHasAccessToBoard(userId, id))
         {
             return NotFound();

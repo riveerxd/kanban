@@ -16,7 +16,6 @@ public class LockManager : ILockManager
 
     public bool TryAcquireLock(string key, int userId, string username)
     {
-        // Clean expired lock if exists
         if (_locks.TryGetValue(key, out var existing))
         {
             if (existing.ExpiresAt < DateTime.UtcNow)
@@ -27,11 +26,10 @@ public class LockManager : ILockManager
             else
             {
                 _logger.LogInformation($"Lock denied for {key}, held by user {existing.UserId}");
-                return false; // Still locked by someone else
+                return false;
             }
         }
 
-        // Try to acquire lock
         var acquired = _locks.TryAdd(key, new ResourceLock
         {
             UserId = userId,
@@ -51,7 +49,6 @@ public class LockManager : ILockManager
     {
         if (_locks.TryGetValue(key, out var lockInfo))
         {
-            // Only the lock owner can release it
             if (lockInfo.UserId == userId)
             {
                 var released = _locks.TryRemove(key, out _);
@@ -75,7 +72,6 @@ public class LockManager : ILockManager
     {
         if (_locks.TryGetValue(key, out var lockInfo))
         {
-            // Check if expired
             if (lockInfo.ExpiresAt < DateTime.UtcNow)
             {
                 _locks.TryRemove(key, out _);
@@ -94,7 +90,7 @@ public class LockManager : ILockManager
         foreach (var kvp in userLocks)
         {
             _locks.TryRemove(kvp.Key, out _);
-            _logger.LogInformation($"Auto-released lock {kvp.Key} for disconnected user {userId}");
+            _logger.LogInformation($"Released lock {kvp.Key} for disconnected user {userId}");
         }
     }
 }

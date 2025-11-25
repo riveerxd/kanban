@@ -7,9 +7,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Controllers;
 
-/// <summary>
-/// Controller for handling user authentication operations.
-/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
@@ -28,14 +25,7 @@ public class AuthController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// Registers a new user account.
-    /// </summary>
-    /// <param name="request">The registration details.</param>
-    /// <returns>Authentication token and user information.</returns>
     [HttpPost("register")]
-    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
     {
         if (!ModelState.IsValid)
@@ -43,22 +33,18 @@ public class AuthController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        // Check if email already exists
         if (await _context.Users.AnyAsync(u => u.Email == request.Email))
         {
             return BadRequest(new { message = "Email is already registered" });
         }
 
-        // Check if username already exists
         if (await _context.Users.AnyAsync(u => u.Username == request.Username))
         {
             return BadRequest(new { message = "Username is already taken" });
         }
 
-        // Hash the password using BCrypt
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-        // Create new user
         var user = new User
         {
             Email = request.Email,
@@ -72,7 +58,6 @@ public class AuthController : ControllerBase
 
         _logger.LogInformation("New user registered: {Username} ({Email})", user.Username, user.Email);
 
-        // Generate JWT token
         var (token, expiresAt) = _jwtService.GenerateToken(user);
 
         var response = new AuthResponse
@@ -86,14 +71,7 @@ public class AuthController : ControllerBase
         return CreatedAtAction(nameof(Register), response);
     }
 
-    /// <summary>
-    /// Authenticates a user and returns a JWT token.
-    /// </summary>
-    /// <param name="request">The login credentials.</param>
-    /// <returns>Authentication token and user information.</returns>
     [HttpPost("login")]
-    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
     {
         if (!ModelState.IsValid)
@@ -101,7 +79,6 @@ public class AuthController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        // Find user by email
         var user = await _context.Users
             .FirstOrDefaultAsync(u => u.Email == request.Email);
 
@@ -110,7 +87,6 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid email or password" });
         }
 
-        // Verify password using BCrypt
         var isValidPassword = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
 
         if (!isValidPassword)
@@ -121,7 +97,6 @@ public class AuthController : ControllerBase
 
         _logger.LogInformation("User logged in: {Username} ({Email})", user.Username, user.Email);
 
-        // Generate JWT token
         var (token, expiresAt) = _jwtService.GenerateToken(user);
 
         var response = new AuthResponse

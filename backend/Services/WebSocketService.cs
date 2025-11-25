@@ -342,8 +342,9 @@ public class WebSocketService : IWebSocketService
 
             return (null, null);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to validate JWT token");
             return (null, null);
         }
     }

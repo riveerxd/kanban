@@ -6,9 +6,6 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace backend.Services;
 
-/// <summary>
-/// Service for generating and managing JWT tokens.
-/// </summary>
 public class JwtService : IJwtService
 {
     private readonly IConfiguration _configuration;
@@ -18,7 +15,6 @@ public class JwtService : IJwtService
         _configuration = configuration;
     }
 
-    /// <inheritdoc/>
     public (string Token, DateTime ExpiresAt) GenerateToken(User user)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
