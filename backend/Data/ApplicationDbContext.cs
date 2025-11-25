@@ -17,6 +17,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Board> Boards { get; set; } = null!;
     public DbSet<Column> Columns { get; set; } = null!;
     public DbSet<Models.Task> Tasks { get; set; } = null!;
+    public DbSet<BoardMember> BoardMembers { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -78,6 +79,28 @@ public class ApplicationDbContext : DbContext
                 .HasColumnType("datetime");
 
             entity.HasIndex(t => new { t.ColumnId, t.Position });
+        });
+
+        // Configure BoardMember entity
+        modelBuilder.Entity<BoardMember>(entity =>
+        {
+            entity.HasOne(bm => bm.Board)
+                .WithMany(b => b.Members)
+                .HasForeignKey(bm => bm.BoardId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(bm => bm.User)
+                .WithMany()
+                .HasForeignKey(bm => bm.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.JoinedAt)
+                .HasColumnType("datetime");
+
+            // Unique constraint: user can only be a member once per board
+            entity.HasIndex(bm => new { bm.BoardId, bm.UserId })
+                .IsUnique()
+                .HasDatabaseName("IX_BoardMembers_BoardId_UserId");
         });
     }
 }

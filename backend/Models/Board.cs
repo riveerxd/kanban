@@ -28,4 +28,5 @@ public class Board
     public User User { get; set; } = null!;
 
     public ICollection<Column> Columns { get; set; } = new List<Column>();
+    public ICollection<BoardMember> Members { get; set; } = new List<BoardMember>();
 }

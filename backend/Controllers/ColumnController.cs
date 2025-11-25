@@ -1,6 +1,7 @@
 using backend.Data;
 using backend.DTOs;
 using backend.Models;
+using backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,12 @@ namespace backend.Controllers;
 public class ColumnController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IBoardAccessService _boardAccessService;
 
-    public ColumnController(ApplicationDbContext context)
+    public ColumnController(ApplicationDbContext context, IBoardAccessService boardAccessService)
     {
         _context = context;
+        _boardAccessService = boardAccessService;
     }
 
     private int GetUserId()
@@ -26,16 +29,11 @@ public class ColumnController : ControllerBase
         return int.Parse(userIdClaim ?? "0");
     }
 
-    private async Task<bool> UserOwnsBoard(int boardId)
-    {
-        var userId = GetUserId();
-        return await _context.Boards.AnyAsync(b => b.Id == boardId && b.UserId == userId);
-    }
-
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ColumnDto>>> GetColumns(int boardId)
     {
-        if (!await UserOwnsBoard(boardId))
+        var userId = GetUserId();
+        if (!await _boardAccessService.UserHasAccessToBoard(userId, boardId))
         {
             return NotFound();
         }
@@ -72,7 +70,8 @@ public class ColumnController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<ColumnDto>> GetColumn(int boardId, int id)
     {
-        if (!await UserOwnsBoard(boardId))
+        var userId = GetUserId();
+        if (!await _boardAccessService.UserHasAccessToBoard(userId, boardId))
         {
             return NotFound();
         }
@@ -113,7 +112,8 @@ public class ColumnController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ColumnDto>> CreateColumn(int boardId, [FromBody] CreateColumnRequest request)
     {
-        if (!await UserOwnsBoard(boardId))
+        var userId = GetUserId();
+        if (!await _boardAccessService.UserHasAccessToBoard(userId, boardId))
         {
             return NotFound();
         }
@@ -146,7 +146,8 @@ public class ColumnController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateColumn(int boardId, int id, [FromBody] UpdateColumnRequest request)
     {
-        if (!await UserOwnsBoard(boardId))
+        var userId = GetUserId();
+        if (!await _boardAccessService.UserHasAccessToBoard(userId, boardId))
         {
             return NotFound();
         }
@@ -172,7 +173,8 @@ public class ColumnController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteColumn(int boardId, int id)
     {
-        if (!await UserOwnsBoard(boardId))
+        var userId = GetUserId();
+        if (!await _boardAccessService.UserHasAccessToBoard(userId, boardId))
         {
             return NotFound();
         }

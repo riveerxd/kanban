@@ -1,6 +1,7 @@
 using backend.Data;
 using backend.DTOs;
 using backend.Models;
+using backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,12 @@ namespace backend.Controllers;
 public class TaskController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IBoardAccessService _boardAccessService;
 
-    public TaskController(ApplicationDbContext context)
+    public TaskController(ApplicationDbContext context, IBoardAccessService boardAccessService)
     {
         _context = context;
+        _boardAccessService = boardAccessService;
     }
 
     private int GetUserId()
@@ -26,27 +29,35 @@ public class TaskController : ControllerBase
         return int.Parse(userIdClaim ?? "0");
     }
 
-    private async Task<bool> UserOwnsColumn(int columnId)
+    private async Task<bool> UserHasAccessToColumn(int columnId)
     {
         var userId = GetUserId();
-        return await _context.Columns
+        var column = await _context.Columns
             .Include(c => c.Board)
-            .AnyAsync(c => c.Id == columnId && c.Board.UserId == userId);
+            .FirstOrDefaultAsync(c => c.Id == columnId);
+
+        if (column == null) return false;
+
+        return await _boardAccessService.UserHasAccessToBoard(userId, column.BoardId);
     }
 
-    private async Task<bool> UserOwnsTask(int taskId)
+    private async Task<bool> UserHasAccessToTask(int taskId)
     {
         var userId = GetUserId();
-        return await _context.Tasks
+        var task = await _context.Tasks
             .Include(t => t.Column)
                 .ThenInclude(c => c.Board)
-            .AnyAsync(t => t.Id == taskId && t.Column.Board.UserId == userId);
+            .FirstOrDefaultAsync(t => t.Id == taskId);
+
+        if (task == null) return false;
+
+        return await _boardAccessService.UserHasAccessToBoard(userId, task.Column.BoardId);
     }
 
     [HttpGet("column/{columnId}")]
     public async Task<ActionResult<IEnumerable<TaskDto>>> GetTasksByColumn(int columnId)
     {
-        if (!await UserOwnsColumn(columnId))
+        if (!await UserHasAccessToColumn(columnId))
         {
             return NotFound();
         }
@@ -73,7 +84,7 @@ public class TaskController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<TaskDto>> GetTask(int id)
     {
-        if (!await UserOwnsTask(id))
+        if (!await UserHasAccessToTask(id))
         {
             return NotFound();
         }
@@ -102,7 +113,7 @@ public class TaskController : ControllerBase
     [HttpPost("column/{columnId}")]
     public async Task<ActionResult<TaskDto>> CreateTask(int columnId, [FromBody] CreateTaskRequest request)
     {
-        if (!await UserOwnsColumn(columnId))
+        if (!await UserHasAccessToColumn(columnId))
         {
             return NotFound();
         }
@@ -136,7 +147,7 @@ public class TaskController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskRequest request)
     {
-        if (!await UserOwnsTask(id))
+        if (!await UserHasAccessToTask(id))
         {
             return NotFound();
         }
@@ -161,12 +172,12 @@ public class TaskController : ControllerBase
     [HttpPatch("{id}/move")]
     public async Task<IActionResult> MoveTask(int id, [FromBody] MoveTaskRequest request)
     {
-        if (!await UserOwnsTask(id))
+        if (!await UserHasAccessToTask(id))
         {
             return NotFound();
         }
 
-        if (!await UserOwnsColumn(request.ColumnId))
+        if (!await UserHasAccessToColumn(request.ColumnId))
         {
             return BadRequest("Invalid column");
         }
@@ -271,7 +282,7 @@ public class TaskController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTask(int id)
     {
-        if (!await UserOwnsTask(id))
+        if (!await UserHasAccessToTask(id))
         {
             return NotFound();
         }

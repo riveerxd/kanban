@@ -18,6 +18,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Register JWT Service
 builder.Services.AddScoped<IJwtService, JwtService>();
 
+// Register Board Access Service
+builder.Services.AddScoped<IBoardAccessService, BoardAccessService>();
+
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT secret not configured");

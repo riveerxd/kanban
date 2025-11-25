@@ -51,6 +51,34 @@ namespace backend.Migrations
                     b.ToTable("Boards");
                 });
 
+            modelBuilder.Entity("backend.Models.BoardMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BoardId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("BoardId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BoardMembers_BoardId_UserId");
+
+                    b.ToTable("BoardMembers");
+                });
+
             modelBuilder.Entity("backend.Models.Column", b =>
                 {
                     b.Property<int>("Id")
@@ -171,6 +199,25 @@ namespace backend.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("backend.Models.BoardMember", b =>
+                {
+                    b.HasOne("backend.Models.Board", "Board")
+                        .WithMany("Members")
+                        .HasForeignKey("BoardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("backend.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Board");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("backend.Models.Column", b =>
                 {
                     b.HasOne("backend.Models.Board", "Board")
@@ -196,6 +243,8 @@ namespace backend.Migrations
             modelBuilder.Entity("backend.Models.Board", b =>
                 {
                     b.Navigation("Columns");
+
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("backend.Models.Column", b =>
