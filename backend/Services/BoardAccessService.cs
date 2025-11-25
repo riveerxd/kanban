@@ -3,7 +3,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services;
 
-public class BoardAccessService : IBoardAccessService
+public class 
+    BoardAccessService : IBoardAccessService
 {
     private readonly ApplicationDbContext _context;
 

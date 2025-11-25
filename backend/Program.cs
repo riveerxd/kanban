@@ -7,6 +7,34 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load environment variables from .env file
+var envFile = Path.Combine(Directory.GetCurrentDirectory(), "..", ".env");
+if (File.Exists(envFile))
+{
+    foreach (var line in File.ReadAllLines(envFile))
+    {
+        var trimmedLine = line.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedLine) || trimmedLine.StartsWith("#"))
+            continue;
+
+        var parts = trimmedLine.Split('=', 2);
+        if (parts.Length == 2)
+        {
+            Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
+        }
+    }
+}
+
+// Configure Kestrel with environment variables
+var httpPort = Environment.GetEnvironmentVariable("BACKEND_HTTP_PORT") ?? "5283";
+var httpsPort = Environment.GetEnvironmentVariable("BACKEND_HTTPS_PORT") ?? "7283";
+var backendHost = Environment.GetEnvironmentVariable("BACKEND_HOST") ?? "localhost";
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(int.Parse(httpPort));
+});
+
 // Add services to the container.
 // Configure Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -23,6 +51,9 @@ builder.Services.AddScoped<IBoardAccessService, BoardAccessService>();
 
 // Register WebSocket Service
 builder.Services.AddSingleton<IWebSocketService, WebSocketService>();
+
+// Register Lock Manager
+builder.Services.AddSingleton<ILockManager, LockManager>();
 
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -51,11 +82,12 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 // Configure CORS
+var frontendPort = Environment.GetEnvironmentVariable("FRONTEND_PORT") ?? "3000";
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins($"http://localhost:{frontendPort}")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -73,7 +105,8 @@ var app = builder.Build();
 
 // Start WebSocket server
 var wsService = app.Services.GetRequiredService<IWebSocketService>();
-await wsService.StartAsync();
+var wsPort = int.Parse(Environment.GetEnvironmentVariable("WS_PORT") ?? "8181");
+await wsService.StartAsync(wsPort);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

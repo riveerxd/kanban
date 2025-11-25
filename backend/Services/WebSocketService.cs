@@ -15,17 +15,20 @@ public class WebSocketService : IWebSocketService
     private readonly ConcurrentDictionary<Guid, SocketInfo> _allConnections = new();
     private readonly IConfiguration _configuration;
     private readonly ILogger<WebSocketService> _logger;
+    private readonly ILockManager _lockManager;
 
-    public WebSocketService(IConfiguration configuration, ILogger<WebSocketService> logger)
+    public WebSocketService(IConfiguration configuration, ILogger<WebSocketService> logger, ILockManager lockManager)
     {
         _configuration = configuration;
         _logger = logger;
+        _lockManager = lockManager;
     }
 
     public Task StartAsync(int port = 8181)
     {
         FleckLog.Level = Fleck.LogLevel.Debug;
-        _server = new WebSocketServer($"ws://0.0.0.0:{port}");
+        var wsHost = Environment.GetEnvironmentVariable("WS_HOST") ?? "0.0.0.0";
+        _server = new WebSocketServer($"ws://{wsHost}:{port}");
 
         _server.Start(socket =>
         {
@@ -60,8 +63,8 @@ public class WebSocketService : IWebSocketService
                 return;
             }
 
-            // Validate JWT token
-            var userId = ValidateToken(token);
+            // Validate JWT token and get user info
+            var (userId, username) = ValidateToken(token);
             if (userId == null)
             {
                 _logger.LogWarning("WebSocket connection rejected: Invalid token");
@@ -70,9 +73,9 @@ public class WebSocketService : IWebSocketService
             }
 
             // Register connection
-            await RegisterConnectionAsync(userId.Value, boardId, socket);
+            await RegisterConnectionAsync(userId.Value, username ?? "Unknown", boardId, socket);
 
-            _logger.LogInformation($"WebSocket connection established: User {userId}, Board {boardId}");
+            _logger.LogInformation($"WebSocket connection established: User {userId} ({username}), Board {boardId}");
         }
         catch (Exception ex)
         {
@@ -83,6 +86,13 @@ public class WebSocketService : IWebSocketService
 
     private async Task OnCloseAsync(IWebSocketConnection socket)
     {
+        // Release all locks held by this user
+        if (_allConnections.TryGetValue(socket.ConnectionInfo.Id, out var socketInfo))
+        {
+            _lockManager.ReleaseUserLocks(socketInfo.UserId);
+            _logger.LogInformation($"Released all locks for user {socketInfo.UserId}");
+        }
+
         await UnregisterConnectionAsync(socket);
         _logger.LogInformation($"WebSocket connection closed: {socket.ConnectionInfo.Id}");
     }
@@ -92,10 +102,126 @@ public class WebSocketService : IWebSocketService
         _logger.LogError(exception, $"WebSocket error: {socket.ConnectionInfo.Id}");
     }
 
-    private void OnMessage(IWebSocketConnection socket, string message)
+    private async void OnMessage(IWebSocketConnection socket, string message)
     {
-        // Handle incoming messages from clients if needed
-        _logger.LogDebug($"WebSocket message received: {message}");
+        try
+        {
+            var msg = JsonSerializer.Deserialize<WsMessage>(message, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            if (msg == null || !_allConnections.TryGetValue(socket.ConnectionInfo.Id, out var socketInfo))
+            {
+                return;
+            }
+
+            _logger.LogDebug($"WebSocket message received: {msg.Type}");
+
+            switch (msg.Type)
+            {
+                case "lock.request":
+                    await HandleLockRequest(socketInfo, msg, socket);
+                    break;
+
+                case "lock.release":
+                    await HandleLockRelease(socketInfo, msg);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling WebSocket message");
+        }
+    }
+
+    private async Task HandleLockRequest(SocketInfo socketInfo, WsMessage msg, IWebSocketConnection socket)
+    {
+        try
+        {
+            var payload = JsonSerializer.Deserialize<JsonElement>(msg.Payload?.ToString() ?? "{}");
+            var resourceType = payload.GetProperty("resourceType").GetString() ?? "";
+            var resourceId = payload.GetProperty("resourceId").GetInt32();
+
+            var key = $"{resourceType}_{resourceId}";
+            var granted = _lockManager.TryAcquireLock(key, socketInfo.UserId, socketInfo.Username);
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
+
+            if (granted)
+            {
+                // Send lock granted to requester
+                await socket.Send(JsonSerializer.Serialize(new
+                {
+                    type = "lock.granted",
+                    payload = new { resourceType, resourceId },
+                    userId = socketInfo.UserId,
+                    timestamp = DateTime.UtcNow
+                }, options));
+
+                // Broadcast to others on the board
+                await BroadcastToBoardAsync(socketInfo.BoardId, new WsMessage
+                {
+                    Type = "lock.acquired",
+                    BoardId = socketInfo.BoardId,
+                    Payload = new { resourceType, resourceId, userId = socketInfo.UserId, username = socketInfo.Username },
+                    UserId = socketInfo.UserId,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                // Lock denied - get current lock info
+                var currentLock = _lockManager.GetLock(key);
+                await socket.Send(JsonSerializer.Serialize(new
+                {
+                    type = "lock.denied",
+                    payload = new {
+                        resourceType,
+                        resourceId,
+                        lockedBy = currentLock?.Username ?? "Unknown"
+                    },
+                    timestamp = DateTime.UtcNow
+                }, options));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling lock request");
+        }
+    }
+
+    private async Task HandleLockRelease(SocketInfo socketInfo, WsMessage msg)
+    {
+        try
+        {
+            var payload = JsonSerializer.Deserialize<JsonElement>(msg.Payload?.ToString() ?? "{}");
+            var resourceType = payload.GetProperty("resourceType").GetString() ?? "";
+            var resourceId = payload.GetProperty("resourceId").GetInt32();
+
+            var key = $"{resourceType}_{resourceId}";
+            var released = _lockManager.ReleaseLock(key, socketInfo.UserId);
+
+            if (released)
+            {
+                // Broadcast to all on the board
+                await BroadcastToBoardAsync(socketInfo.BoardId, new WsMessage
+                {
+                    Type = "lock.released",
+                    BoardId = socketInfo.BoardId,
+                    Payload = new { resourceType, resourceId },
+                    UserId = socketInfo.UserId,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling lock release");
+        }
     }
 
     public async Task BroadcastToBoardAsync(int boardId, WsMessage message)
@@ -127,12 +253,13 @@ public class WebSocketService : IWebSocketService
         await Task.WhenAll(tasks);
     }
 
-    public Task RegisterConnectionAsync(int userId, int boardId, IWebSocketConnection socket)
+    public Task RegisterConnectionAsync(int userId, string username, int boardId, IWebSocketConnection socket)
     {
         var socketInfo = new SocketInfo
         {
             Socket = socket,
             UserId = userId,
+            Username = username,
             BoardId = boardId
         };
 
@@ -179,7 +306,7 @@ public class WebSocketService : IWebSocketService
         return Task.CompletedTask;
     }
 
-    private int? ValidateToken(string token)
+    private (int? userId, string? username) ValidateToken(string token)
     {
         try
         {
@@ -188,7 +315,7 @@ public class WebSocketService : IWebSocketService
 
             if (string.IsNullOrEmpty(secretKey))
             {
-                return null;
+                return (null, null);
             }
 
             var tokenHandler = new JwtSecurityTokenHandler();
@@ -206,17 +333,18 @@ public class WebSocketService : IWebSocketService
 
             var principal = tokenHandler.ValidateToken(token, validationParameters, out _);
             var userIdClaim = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+            var usernameClaim = principal.FindFirst(System.Security.Claims.ClaimTypes.Name);
 
             if (userIdClaim != null && int.TryParse(userIdClaim.Value, out var userId))
             {
-                return userId;
+                return (userId, usernameClaim?.Value);
             }
 
-            return null;
+            return (null, null);
         }
         catch
         {
-            return null;
+            return (null, null);
         }
     }
 
@@ -249,6 +377,7 @@ public class WebSocketService : IWebSocketService
     {
         public IWebSocketConnection Socket { get; set; } = null!;
         public int UserId { get; set; }
+        public string Username { get; set; } = string.Empty;
         public int BoardId { get; set; }
     }
 }
