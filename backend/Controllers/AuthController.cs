@@ -62,6 +62,7 @@ public class AuthController : ControllerBase
 
         var response = new AuthResponse
         {
+            UserId = user.Id,
             Token = token,
             Email = user.Email,
             Username = user.Username,
@@ -101,6 +102,7 @@ public class AuthController : ControllerBase
 
         var response = new AuthResponse
         {
+            UserId = user.Id,
             Token = token,
             Email = user.Email,
             Username = user.Username,
