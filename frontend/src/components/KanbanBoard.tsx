@@ -29,6 +29,8 @@ export interface Task {
   description?: string;
   columnId: string;
   position: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ColumnType {
@@ -86,7 +88,9 @@ export function KanbanBoard() {
                 title: task.title,
                 description: task.description,
                 columnId: task.columnId.toString(),
-                position: task.position
+                position: task.position,
+                createdAt: task.createdAt,
+                updatedAt: task.updatedAt
               }]
             };
           }
@@ -124,6 +128,8 @@ export function KanbanBoard() {
                   description: task.description,
                   columnId: col.id.toString(),
                   position: task.position,
+                  createdAt: task.createdAt,
+                  updatedAt: task.updatedAt,
                 })),
               }))
             );
@@ -257,12 +263,16 @@ export function KanbanBoard() {
             description: task.description,
             columnId: col.id.toString(),
             position: task.position,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
           })),
         }))
       );
       setShowBoardSelector(false);
     } catch (error) {
       console.error("Failed to switch board:", error);
+      logout();
+      router.push("/login");
     } finally {
       setLoading(false);
     }
@@ -308,6 +318,8 @@ export function KanbanBoard() {
                 description: task.description,
                 columnId: col.id.toString(),
                 position: task.position,
+                createdAt: task.createdAt,
+                updatedAt: task.updatedAt,
               })),
             }))
           );
@@ -346,6 +358,8 @@ export function KanbanBoard() {
         }
       } catch (error) {
         console.error("Failed to load board:", error);
+        logout();
+        router.push("/login");
       } finally {
         setLoading(false);
       }
@@ -489,6 +503,8 @@ export function KanbanBoard() {
             description: task.description,
             columnId: col.id.toString(),
             position: task.position,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
           })),
         }))
       );
@@ -574,6 +590,8 @@ export function KanbanBoard() {
                   description: newTask.description,
                   columnId: col.id,
                   position: newTask.position,
+                  createdAt: newTask.createdAt,
+                  updatedAt: newTask.updatedAt,
                 },
               ],
             };

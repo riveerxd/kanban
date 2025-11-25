@@ -4,11 +4,17 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let errorMessage = `Request failed with status ${response.status}`;
     try {
-      const errorData = await response.json();
-      errorMessage = errorData.message || errorData.error || errorMessage;
+      const text = await response.text();
+      if (text) {
+        try {
+          const json = JSON.parse(text);
+          errorMessage = json.message || json.error || text;
+        } catch {
+          errorMessage = text;
+        }
+      }
     } catch {
-      const textError = await response.text();
-      if (textError) errorMessage = textError;
+      // Ignore
     }
     throw new Error(errorMessage);
   }
@@ -22,6 +28,7 @@ export interface RegisterData {
 }
 
 export interface AuthResponse {
+  userId: number;
   token: string;
   email: string;
   username: string;

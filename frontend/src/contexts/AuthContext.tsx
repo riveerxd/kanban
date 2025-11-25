@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 interface User {
+  id: number;
   email: string;
   username: string;
 }
@@ -52,12 +53,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Store token and user info
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify({
+      id: data.userId,
       email: data.email,
       username: data.username,
     }));
 
     setToken(data.token);
-    setUser({ email: data.email, username: data.username });
+    setUser({ id: data.userId, email: data.email, username: data.username });
   };
 
   const register = async (email: string, username: string, password: string) => {
@@ -77,12 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Store token and user info
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify({
+      id: data.userId,
       email: data.email,
       username: data.username,
     }));
 
     setToken(data.token);
-    setUser({ email: data.email, username: data.username });
+    setUser({ id: data.userId, email: data.email, username: data.username });
   };
 
   const logout = () => {

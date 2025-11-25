@@ -11,7 +11,7 @@ interface UseWebSocketOptions {
 export function useWebSocket({ boardId, token, onMessage }: UseWebSocketOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 10;
   const baseDelay = 1000; // 1 second
