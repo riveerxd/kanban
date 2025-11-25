@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import {
@@ -17,6 +17,7 @@ import { SortableContext, arrayMove } from "@dnd-kit/sortable";
 import { Column } from "./Column";
 import { TaskCard } from "./TaskCard";
 import { ShareBoardModal } from "./ShareBoardModal";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,129 @@ export function KanbanBoard() {
   useEffect(() => {
     columnsRef.current = columns;
   }, [columns]);
+
+  // WebSocket message handler
+  const handleWebSocketMessage = useCallback((message: any) => {
+    // Ignore messages from current user (already applied optimistically)
+    if (message.userId === user?.id) {
+      return;
+    }
+
+    console.log('WebSocket message received:', message);
+
+    switch (message.type) {
+      case 'task.created': {
+        const task = message.payload;
+        setColumns(prevColumns => prevColumns.map(col => {
+          if (col.id === task.columnId.toString()) {
+            return {
+              ...col,
+              tasks: [...col.tasks, {
+                id: task.id.toString(),
+                title: task.title,
+                description: task.description,
+                columnId: task.columnId.toString(),
+                position: task.position
+              }]
+            };
+          }
+          return col;
+        }));
+        break;
+      }
+
+      case 'task.updated': {
+        const task = message.payload;
+        setColumns(prevColumns => prevColumns.map(col => ({
+          ...col,
+          tasks: col.tasks.map(t =>
+            t.id === task.id.toString()
+              ? { ...t, title: task.title, description: task.description, position: task.position }
+              : t
+          )
+        })));
+        break;
+      }
+
+      case 'task.moved': {
+        const { id, oldColumnId, newColumnId, newPosition } = message.payload;
+        // Reload board to get consistent state after remote move
+        if (boardId && token) {
+          api.getBoard(token, boardId).then(board => {
+            setColumns(
+              board.columns.map((col) => ({
+                id: col.id.toString(),
+                title: col.title,
+                position: col.position,
+                tasks: col.tasks.map((task) => ({
+                  id: task.id.toString(),
+                  title: task.title,
+                  description: task.description,
+                  columnId: col.id.toString(),
+                  position: task.position,
+                })),
+              }))
+            );
+          });
+        }
+        break;
+      }
+
+      case 'task.deleted': {
+        const { id } = message.payload;
+        setColumns(prevColumns => prevColumns.map(col => ({
+          ...col,
+          tasks: col.tasks.filter(t => t.id !== id.toString())
+        })));
+        break;
+      }
+
+      case 'column.created': {
+        const column = message.payload;
+        setColumns(prevColumns => [...prevColumns, {
+          id: column.id.toString(),
+          title: column.title,
+          position: column.position,
+          tasks: []
+        }]);
+        break;
+      }
+
+      case 'column.updated': {
+        const { id, title, position } = message.payload;
+        setColumns(prevColumns => prevColumns.map(col =>
+          col.id === id.toString()
+            ? { ...col, title, position }
+            : col
+        ));
+        break;
+      }
+
+      case 'column.deleted': {
+        const { id } = message.payload;
+        setColumns(prevColumns => prevColumns.filter(col => col.id !== id.toString()));
+        break;
+      }
+
+      case 'board.updated': {
+        // Optionally handle board title updates
+        break;
+      }
+
+      case 'member.joined':
+      case 'member.left': {
+        // Optionally show notification
+        break;
+      }
+    }
+  }, [user?.id, boardId, token]);
+
+  // Setup WebSocket connection
+  const { isConnected } = useWebSocket({
+    boardId,
+    token,
+    onMessage: handleWebSocketMessage
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -545,6 +669,21 @@ export function KanbanBoard() {
 
             {/* User Info and Actions */}
             <div className="flex items-center gap-3">
+              {/* WebSocket Connection Status */}
+              {boardId && (
+                isConnected ? (
+                  <div className="flex items-center gap-2 text-green-600 text-sm">
+                    <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
+                    <span className="hidden sm:inline">Live</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-yellow-600 text-sm">
+                    <span className="w-2 h-2 bg-yellow-600 rounded-full" />
+                    <span className="hidden sm:inline">Reconnecting...</span>
+                  </div>
+                )
+              )}
+
               {/* Board Selector */}
               {boards.length > 1 && boardId && (
                 <div className="relative">
