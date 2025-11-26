@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5283";
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {

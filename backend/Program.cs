@@ -7,6 +7,9 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load .env file from backend directory
+DotNetEnv.Env.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
+
 // server port config from env or use default
 var httpPort = Environment.GetEnvironmentVariable("BACKEND_HTTP_PORT") ?? "5283";
 
@@ -15,10 +18,18 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(int.Parse(httpPort));
 });
 
+// Build connection string from environment variables
+var mysqlHost = Environment.GetEnvironmentVariable("MYSQL_HOST") ?? "localhost";
+var mysqlPort = Environment.GetEnvironmentVariable("MYSQL_PORT") ?? "3306";
+var mysqlDatabase = Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? "kanban_db";
+var mysqlUser = Environment.GetEnvironmentVariable("MYSQL_USER") ?? "kanbanuser";
+var mysqlPassword = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? "kanbanpass123";
+var connectionString = $"Server={mysqlHost};Port={mysqlPort};Database={mysqlDatabase};User={mysqlUser};Password={mysqlPassword};";
+
 // MySQL db setup
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
+        connectionString,
         new MySqlServerVersion(new Version(8, 0, 21))
     ));
 
@@ -28,9 +39,10 @@ builder.Services.AddScoped<IBoardAccessService, BoardAccessService>();
 builder.Services.AddSingleton<IWebSocketService, WebSocketService>();
 builder.Services.AddSingleton<ILockManager, LockManager>();
 
-// JWT auth setup
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT secret not configured");
+// JWT auth setup from environment variables
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? throw new InvalidOperationException("JWT secret not configured");
+var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "KanbanAPI";
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "KanbanClient";
 
 builder.Services.AddAuthentication(options =>
 {
@@ -45,9 +57,9 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = jwtSettings["Issuer"],
-        ValidAudience = jwtSettings["Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
+        ValidIssuer = jwtIssuer,
+        ValidAudience = jwtAudience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
         ClockSkew = TimeSpan.Zero
     };
 });
