@@ -5,8 +5,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-var builder = WebApplication.CreateBuilder(args);
-
 // Load .env file from backend directory with Windows CRLF fix
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
 if (File.Exists(envPath))
@@ -37,6 +35,17 @@ else
 {
     Console.WriteLine($"Warning: .env file not found at {envPath}");
 }
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add environment variables to configuration so services can access them
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["JwtSettings:Secret"] = Environment.GetEnvironmentVariable("JWT_SECRET"),
+    ["JwtSettings:Issuer"] = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "KanbanAPI",
+    ["JwtSettings:Audience"] = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "KanbanClient",
+    ["JwtSettings:ExpirationMinutes"] = Environment.GetEnvironmentVariable("JWT_EXPIRATION_MINUTES") ?? "1440",
+});
 
 // server port config from env or use default
 var httpPort = Environment.GetEnvironmentVariable("BACKEND_HTTP_PORT") ?? "5283";
@@ -73,6 +82,16 @@ if (string.IsNullOrWhiteSpace(jwtSecret))
 {
     throw new InvalidOperationException("JWT_SECRET environment variable is not set or empty. Please check your backend/.env file.");
 }
+
+// Debug: Check for hidden characters
+var secretBytes = Encoding.UTF8.GetBytes(jwtSecret);
+Console.WriteLine($"JWT_SECRET debug - Length: {jwtSecret.Length}, Bytes: {secretBytes.Length}, First 10 chars: '{jwtSecret.Substring(0, Math.Min(10, jwtSecret.Length))}'");
+if (jwtSecret.Length != 32)
+{
+    Console.WriteLine($"WARNING: JWT_SECRET should be 32 characters, but it's {jwtSecret.Length}. Checking for hidden characters...");
+    Console.WriteLine($"Last char code: {(int)jwtSecret[jwtSecret.Length - 1]}");
+}
+
 var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "KanbanAPI";
 var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "KanbanClient";
 Console.WriteLine($"JWT configured - Issuer: {jwtIssuer}, Audience: {jwtAudience}, Secret length: {jwtSecret.Length}");
