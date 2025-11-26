@@ -8,7 +8,16 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 // Load .env file from backend directory
-DotNetEnv.Env.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
+var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+if (File.Exists(envPath))
+{
+    DotNetEnv.Env.Load(envPath);
+    Console.WriteLine($"Loaded .env file from: {envPath}");
+}
+else
+{
+    Console.WriteLine($"Warning: .env file not found at {envPath}");
+}
 
 // server port config from env or use default
 var httpPort = Environment.GetEnvironmentVariable("BACKEND_HTTP_PORT") ?? "5283";
@@ -40,9 +49,14 @@ builder.Services.AddSingleton<IWebSocketService, WebSocketService>();
 builder.Services.AddSingleton<ILockManager, LockManager>();
 
 // JWT auth setup from environment variables
-var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? throw new InvalidOperationException("JWT secret not configured");
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET");
+if (string.IsNullOrWhiteSpace(jwtSecret))
+{
+    throw new InvalidOperationException("JWT_SECRET environment variable is not set or empty. Please check your backend/.env file.");
+}
 var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "KanbanAPI";
 var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "KanbanClient";
+Console.WriteLine($"JWT configured - Issuer: {jwtIssuer}, Audience: {jwtAudience}, Secret length: {jwtSecret.Length}");
 
 builder.Services.AddAuthentication(options =>
 {
