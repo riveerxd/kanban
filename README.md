@@ -34,7 +34,7 @@ Real-time collaborative Kanban board system with WebSocket support for live upda
 ### Prerequisites
 
 - Node.js 20.x+
-- .NET 8.0 SDK
+- .NET 8.0 SDK (or Docker)
 - MySQL 8.0 or Docker
 
 ### Setup
@@ -46,12 +46,22 @@ cd kanban
 ```
 
 **2. Configure environment**
-```bash
-# Copy example environment file
-cp .env.example .env
 
-# Edit .env with your settings (optional - defaults work for local development)
+Copy the example environment files and customize if needed:
+
+```bash
+# Linux/Mac
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+
+# Windows (PowerShell)
+Copy-Item .env.example .env
+Copy-Item backend/.env.example backend/.env
+Copy-Item frontend/.env.example frontend/.env
 ```
+
+**Note:** The defaults work for local development. Only edit if you need custom ports or database credentials.
 
 **3. Start MySQL**
 ```bash
@@ -63,14 +73,47 @@ docker ps | grep kanban-mysql
 ```
 
 **4. Backend setup**
+
+**Option A: Using .NET SDK (native)**
 ```bash
 cd backend
+
+# Restore packages
+dotnet restore
 
 # Apply migrations
 dotnet ef database update
 
 # Run backend
 dotnet run
+```
+
+**Option B: Using Docker wrapper (Linux/Mac)**
+```bash
+cd backend
+
+# Restore packages
+../dotnet-docker/dotnet restore
+
+# Apply migrations
+../dotnet-docker/dotnet ef database update
+
+# Run backend
+../dotnet-docker/dotnet run
+```
+
+**Option C: Using Docker wrapper (Windows)**
+```powershell
+cd backend
+
+# Restore packages
+..\dotnet-docker\dotnet.bat restore
+
+# Apply migrations
+..\dotnet-docker\dotnet.bat ef database update
+
+# Run backend
+..\dotnet-docker\dotnet.bat run
 ```
 
 **5. Frontend setup**
@@ -94,28 +137,47 @@ Application will be available at:
 
 ## Configuration
 
-All services are configured via the root `.env` file:
+The application uses three separate `.env` files for better organization and cross-platform compatibility:
 
+### Root `.env` (Docker Compose only)
 ```bash
-# MySQL Configuration
+# MySQL Configuration for Docker Compose
 MYSQL_ROOT_PASSWORD=rootpass123
 MYSQL_DATABASE=kanban_db
 MYSQL_USER=kanbanuser
 MYSQL_PASSWORD=kanbanpass123
 MYSQL_PORT=3306
+```
 
-# Backend Configuration
+### `backend/.env` (Backend configuration)
+```bash
+# Database Configuration
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=kanban_db
+MYSQL_USER=kanbanuser
+MYSQL_PASSWORD=kanbanpass123
+
+# Server Configuration
 BACKEND_HTTP_PORT=5283
-BACKEND_HTTPS_PORT=7283
-BACKEND_HOST=localhost
 WS_PORT=8181
-WS_HOST=0.0.0.0
 
-# Frontend Configuration
+# JWT Configuration
+JWT_SECRET=ace8c61b8b7396a4bfc85bfad78c0585
+JWT_ISSUER=KanbanAPI
+JWT_AUDIENCE=KanbanClient
+
+# CORS Configuration
 FRONTEND_PORT=3000
 ```
 
-**Note:** JWT settings are configured in `backend/appsettings.json`. Change the `JwtSettings:Secret` for production use.
+### `frontend/.env` (Frontend configuration)
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:5283
+NEXT_PUBLIC_WS_URL=ws://localhost:8181
+```
+
+**Security Note:** Change `JWT_SECRET` and `MYSQL_ROOT_PASSWORD` for production use.
 
 ---
 
