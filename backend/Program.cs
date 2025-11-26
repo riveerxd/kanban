@@ -7,11 +7,30 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Load .env file from backend directory
+// Load .env file from backend directory with Windows CRLF fix
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
 if (File.Exists(envPath))
 {
     DotNetEnv.Env.Load(envPath);
+
+    // Fix for Windows CRLF issue: Trim all environment variables to remove \r\n
+    var envVars = new[] {
+        "MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD",
+        "BACKEND_HTTP_PORT", "BACKEND_HTTPS_PORT", "WS_PORT", "WS_HOST",
+        "JWT_SECRET", "JWT_ISSUER", "JWT_AUDIENCE", "JWT_EXPIRATION_MINUTES",
+        "FRONTEND_PORT"
+    };
+
+    foreach (var varName in envVars)
+    {
+        var value = Environment.GetEnvironmentVariable(varName);
+        if (!string.IsNullOrEmpty(value))
+        {
+            // Trim CRLF and whitespace that DotNetEnv may include on Windows
+            Environment.SetEnvironmentVariable(varName, value.Trim());
+        }
+    }
+
     Console.WriteLine($"Loaded .env file from: {envPath}");
 }
 else
