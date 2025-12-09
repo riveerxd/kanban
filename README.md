@@ -239,5 +239,19 @@ Full API documentation available at: `http://localhost:5283/swagger`
 
 ---
 
+## Logging and Monitoring
+
+The backend uses **Serilog** for structured, color-coded console logging with request tracing. Logs are also written to the `logs/` directory. The application can be monitored by inspecting these logs for HTTP requests, WebSocket connections, and authentication events.
+
+![alt text](image-1.png)
+
+---
+
+## Known Bugs
+
+- Unexpected behaviour when moving task between 2 columns multiple times
+
+---
+
 **Project Type:** School Project
 **Status:** In Development
