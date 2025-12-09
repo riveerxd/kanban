@@ -18,12 +18,14 @@ public class BoardController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly IBoardAccessService _boardAccessService;
     private readonly IWebSocketService _webSocketService;
+    private readonly ILogger<BoardController> _logger;
 
-    public BoardController(ApplicationDbContext context, IBoardAccessService boardAccessService, IWebSocketService webSocketService)
+    public BoardController(ApplicationDbContext context, IBoardAccessService boardAccessService, IWebSocketService webSocketService, ILogger<BoardController> logger)
     {
         _context = context;
         _boardAccessService = boardAccessService;
         _webSocketService = webSocketService;
+        _logger = logger;
     }
 
     private int GetUserId()
@@ -141,6 +143,9 @@ public class BoardController : ControllerBase
         _context.Boards.Add(board);
         await _context.SaveChangesAsync();
 
+        _logger.LogInformation("Board created | BoardId: {BoardId}, Title: {Title}, UserId: {UserId}",
+            board.Id, board.Title, userId);
+
         var boardDto = new BoardDto
         {
             Id = board.Id,
@@ -173,10 +178,14 @@ public class BoardController : ControllerBase
             return NotFound();
         }
 
+        var oldTitle = board.Title;
         board.Title = request.Title;
         board.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Board updated | BoardId: {BoardId}, OldTitle: {OldTitle}, NewTitle: {NewTitle}, UserId: {UserId}",
+            id, oldTitle, request.Title, userId);
 
         // Broadcast board update
         await _webSocketService.BroadcastToBoardAsync(id, new WsMessage
@@ -207,6 +216,9 @@ public class BoardController : ControllerBase
 
         _context.Boards.Remove(board);
         await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Board deleted | BoardId: {BoardId}, Title: {Title}, UserId: {UserId}",
+            id, board.Title, userId);
 
         return NoContent();
     }
@@ -303,6 +315,9 @@ public class BoardController : ControllerBase
         _context.BoardMembers.Add(boardMember);
         await _context.SaveChangesAsync();
 
+        _logger.LogInformation("Member invited | BoardId: {BoardId}, InvitedUserId: {InvitedUserId}, InvitedEmail: {Email}, InvitedBy: {UserId}",
+            id, invitedUser.Id, invitedUser.Email, userId);
+
         // Broadcast member joined
         await _webSocketService.BroadcastToBoardAsync(id, new WsMessage
         {
@@ -342,6 +357,9 @@ public class BoardController : ControllerBase
         var removedUserId = boardMember.UserId;
         _context.BoardMembers.Remove(boardMember);
         await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Member removed | BoardId: {BoardId}, RemovedUserId: {RemovedUserId}, RemovedBy: {UserId}",
+            id, removedUserId, userId);
 
         // Broadcast member left
         await _webSocketService.BroadcastToBoardAsync(id, new WsMessage

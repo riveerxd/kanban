@@ -26,7 +26,7 @@ public class WebSocketService : IWebSocketService
 
     public Task StartAsync(int port = 8181)
     {
-        FleckLog.Level = Fleck.LogLevel.Debug;
+        FleckLog.Level = Fleck.LogLevel.Warn;
         var wsHost = Environment.GetEnvironmentVariable("WS_HOST") ?? "0.0.0.0";
         _server = new WebSocketServer($"ws://{wsHost}:{port}");
 
@@ -75,7 +75,8 @@ public class WebSocketService : IWebSocketService
             // Register connection
             await RegisterConnectionAsync(userId.Value, username ?? "Unknown", boardId, socket);
 
-            _logger.LogInformation($"WebSocket connection established: User {userId} ({username}), Board {boardId}");
+            _logger.LogInformation("WebSocket connected | UserId: {UserId}, Username: {Username}, BoardId: {BoardId}, ConnectionId: {ConnectionId}, IP: {IP}",
+                userId, username, boardId, socket.ConnectionInfo.Id, socket.ConnectionInfo.ClientIpAddress);
         }
         catch (Exception ex)
         {
@@ -90,11 +91,15 @@ public class WebSocketService : IWebSocketService
         if (_allConnections.TryGetValue(socket.ConnectionInfo.Id, out var socketInfo))
         {
             _lockManager.ReleaseUserLocks(socketInfo.UserId);
-            _logger.LogInformation($"Released all locks for user {socketInfo.UserId}");
+            _logger.LogInformation("WebSocket disconnected | UserId: {UserId}, Username: {Username}, BoardId: {BoardId}, ConnectionId: {ConnectionId}",
+                socketInfo.UserId, socketInfo.Username, socketInfo.BoardId, socket.ConnectionInfo.Id);
+        }
+        else
+        {
+            _logger.LogInformation("WebSocket disconnected | ConnectionId: {ConnectionId} (unregistered)", socket.ConnectionInfo.Id);
         }
 
         await UnregisterConnectionAsync(socket);
-        _logger.LogInformation($"WebSocket connection closed: {socket.ConnectionInfo.Id}");
     }
 
     private void OnError(IWebSocketConnection socket, Exception exception)
@@ -116,7 +121,8 @@ public class WebSocketService : IWebSocketService
                 return;
             }
 
-            _logger.LogDebug($"WebSocket message received: {msg.Type}");
+            _logger.LogDebug("WebSocket message | Type: {Type}, UserId: {UserId}, BoardId: {BoardId}",
+                msg.Type, socketInfo.UserId, socketInfo.BoardId);
 
             switch (msg.Type)
             {
@@ -153,6 +159,8 @@ public class WebSocketService : IWebSocketService
 
             if (granted)
             {
+                _logger.LogInformation("Lock acquired | Resource: {Resource}, UserId: {UserId}, Username: {Username}, BoardId: {BoardId}",
+                    key, socketInfo.UserId, socketInfo.Username, socketInfo.BoardId);
                 // Send lock granted to requester
                 await socket.Send(JsonSerializer.Serialize(new
                 {
@@ -176,6 +184,8 @@ public class WebSocketService : IWebSocketService
             {
                 // Lock denied - get current lock info
                 var currentLock = _lockManager.GetLock(key);
+                _logger.LogInformation("Lock denied | Resource: {Resource}, UserId: {UserId}, HeldBy: {HeldBy}, BoardId: {BoardId}",
+                    key, socketInfo.UserId, currentLock?.Username ?? "Unknown", socketInfo.BoardId);
                 await socket.Send(JsonSerializer.Serialize(new
                 {
                     type = "lock.denied",
@@ -207,6 +217,8 @@ public class WebSocketService : IWebSocketService
 
             if (released)
             {
+                _logger.LogInformation("Lock released | Resource: {Resource}, UserId: {UserId}, BoardId: {BoardId}",
+                    key, socketInfo.UserId, socketInfo.BoardId);
                 // Broadcast to all on the board
                 await BroadcastToBoardAsync(socketInfo.BoardId, new WsMessage
                 {

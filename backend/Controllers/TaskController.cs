@@ -18,12 +18,14 @@ public class TaskController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly IBoardAccessService _boardAccessService;
     private readonly IWebSocketService _webSocketService;
+    private readonly ILogger<TaskController> _logger;
 
-    public TaskController(ApplicationDbContext context, IBoardAccessService boardAccessService, IWebSocketService webSocketService)
+    public TaskController(ApplicationDbContext context, IBoardAccessService boardAccessService, IWebSocketService webSocketService, ILogger<TaskController> logger)
     {
         _context = context;
         _boardAccessService = boardAccessService;
         _webSocketService = webSocketService;
+        _logger = logger;
     }
 
     private int GetUserId()
@@ -140,6 +142,9 @@ public class TaskController : ControllerBase
         _context.Tasks.Add(task);
         await _context.SaveChangesAsync();
 
+        _logger.LogInformation("Task created | TaskId: {TaskId}, Title: {Title}, ColumnId: {ColumnId}, BoardId: {BoardId}, UserId: {UserId}",
+            task.Id, task.Title, columnId, column?.BoardId, userId);
+
         var taskDto = new TaskDto
         {
             Id = task.Id,
@@ -186,12 +191,16 @@ public class TaskController : ControllerBase
             return NotFound();
         }
 
+        var oldTitle = task.Title;
         task.Title = request.Title;
         task.Description = request.Description;
         task.Position = request.Position;
         task.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Task updated | TaskId: {TaskId}, OldTitle: {OldTitle}, NewTitle: {NewTitle}, BoardId: {BoardId}, UserId: {UserId}",
+            id, oldTitle, request.Title, task.Column.BoardId, userId);
 
         await _webSocketService.BroadcastToBoardAsync(task.Column.BoardId, new WsMessage
         {
@@ -318,6 +327,9 @@ public class TaskController : ControllerBase
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            _logger.LogInformation("Task moved | TaskId: {TaskId}, OldColumnId: {OldColumnId}, NewColumnId: {NewColumnId}, NewPosition: {Position}, BoardId: {BoardId}, UserId: {UserId}",
+                id, oldColumnId, newColumnId, newPosition, boardId, userId);
+
             await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
             {
                 Type = "task.moved",
@@ -363,9 +375,13 @@ public class TaskController : ControllerBase
 
         var boardId = task.Column.BoardId;
         var columnId = task.ColumnId;
+        var taskTitle = task.Title;
 
         _context.Tasks.Remove(task);
         await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Task deleted | TaskId: {TaskId}, Title: {Title}, ColumnId: {ColumnId}, BoardId: {BoardId}, UserId: {UserId}",
+            id, taskTitle, columnId, boardId, userId);
 
         await _webSocketService.BroadcastToBoardAsync(boardId, new WsMessage
         {

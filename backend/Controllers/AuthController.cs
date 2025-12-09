@@ -4,6 +4,7 @@ using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Serilog.Context;
 
 namespace backend.Controllers;
 
@@ -80,8 +81,16 @@ public class AuthController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Email == request.Email);
+        User? user;
+        try
+        {
+            user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Database error during login");
+            return StatusCode(503, new { message = "Database is currently unavailable" });
+        }
 
         if (user == null)
         {
@@ -95,6 +104,9 @@ public class AuthController : ControllerBase
             _logger.LogWarning("Failed login attempt for email: {Email}", request.Email);
             return Unauthorized(new { message = "Invalid email or password" });
         }
+
+        // Push user to log context so middleware sees it
+        LogContext.PushProperty("UserId", user.Id);
 
         _logger.LogInformation("User logged in: {Username} ({Email})", user.Username, user.Email);
 

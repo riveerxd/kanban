@@ -1,9 +1,26 @@
 using System.Text;
 using backend.Data;
+using backend.Middleware;
 using backend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Events;
+
+// Configure Serilog
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithThreadId()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {CorrelationId} {UserId} {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File("logs/kanban-.log",
+        rollingInterval: RollingInterval.Day,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{CorrelationId}] [{UserId}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
 
 // Load .env file from backend directory with Windows CRLF fix
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
@@ -38,6 +55,9 @@ else
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Use Serilog for all logging
+builder.Host.UseSerilog();
+
 // Add environment variables to configuration so services can access them
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {
@@ -68,7 +88,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(
         connectionString,
         new MySqlServerVersion(new Version(8, 0, 21))
-    ));
+    )
+    .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.MultipleCollectionIncludeWarning)));
 
 // Register services
 builder.Services.AddScoped<IJwtService, JwtService>();
@@ -83,18 +104,8 @@ if (string.IsNullOrWhiteSpace(jwtSecret))
     throw new InvalidOperationException("JWT_SECRET environment variable is not set or empty. Please check your backend/.env file.");
 }
 
-// Debug: Check for hidden characters
-var secretBytes = Encoding.UTF8.GetBytes(jwtSecret);
-Console.WriteLine($"JWT_SECRET debug - Length: {jwtSecret.Length}, Bytes: {secretBytes.Length}, First 10 chars: '{jwtSecret.Substring(0, Math.Min(10, jwtSecret.Length))}'");
-if (jwtSecret.Length != 32)
-{
-    Console.WriteLine($"WARNING: JWT_SECRET should be 32 characters, but it's {jwtSecret.Length}. Checking for hidden characters...");
-    Console.WriteLine($"Last char code: {(int)jwtSecret[jwtSecret.Length - 1]}");
-}
-
 var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "KanbanAPI";
 var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "KanbanClient";
-Console.WriteLine($"JWT configured - Issuer: {jwtIssuer}, Audience: {jwtAudience}, Secret length: {jwtSecret.Length}");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -152,8 +163,22 @@ if (app.Environment.IsDevelopment())
 // Middleware pipeline
 app.UseHttpsRedirection();
 app.UseCors();
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.MapControllers();
 
-app.Run();
+try
+{
+    Log.Information("Kanban API starting up");
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
