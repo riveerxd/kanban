@@ -253,5 +253,24 @@ The backend uses **Serilog** for structured, color-coded console logging with re
 
 ---
 
+## Version History
+
+### v1.1.0
+- Multi-board support (users can create and manage multiple boards)
+- Board sharing functionality with multi-user access
+- Fixed task movement bug between columns
+- Fixed task lock bug where edit mode wouldn't activate for the initiating user
+
+### v1.0.0
+- Initial release
+- JWT-based authentication (login/register)
+- Real-time collaborative editing via WebSocket
+- Drag-and-drop task management
+- Resource locking to prevent edit conflicts
+- Serilog logging with daily file rotation
+- Swagger API documentation
+
+---
+
 **Project Type:** School Project
 **Status:** In Development
