@@ -1,7 +1,20 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5283";
 
+// Handle 401 - clear auth and redirect to login
+function handleUnauthorized() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  window.location.href = "/login";
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    // Auto-logout on 401 Unauthorized
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error("Session expired. Please log in again.");
+    }
+
     let errorMessage = `Request failed with status ${response.status}`;
     try {
       const text = await response.text();

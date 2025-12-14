@@ -21,9 +21,10 @@ interface ColumnProps {
   locks: Record<string, {username: string, mine: boolean}>;
   onRequestLock: (resourceType: string, resourceId: number) => void;
   onReleaseLock: (resourceType: string, resourceId: number) => void;
+  onClearLock: (resourceType: string, resourceId: number) => void;
 }
 
-export function Column({ column, onAddTask, editingTaskId, onEditingChange, onDeleteColumn, onEditColumn, onDeleteTask, onEditTask, locks, onRequestLock, onReleaseLock }: ColumnProps) {
+export function Column({ column, onAddTask, editingTaskId, onEditingChange, onDeleteColumn, onEditColumn, onDeleteTask, onEditTask, locks, onRequestLock, onReleaseLock, onClearLock }: ColumnProps) {
   const { setNodeRef } = useDroppable({
     id: column.id,
   });
@@ -150,6 +151,7 @@ export function Column({ column, onAddTask, editingTaskId, onEditingChange, onDe
               lock={locks[`task_${task.id}`]}
               onRequestLock={onRequestLock}
               onReleaseLock={onReleaseLock}
+              onClearLock={onClearLock}
             />
           ))}
 

@@ -13,25 +13,44 @@ export function useWebSocket({ boardId, token, onMessage }: UseWebSocketOptions)
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const isCleaningUpRef = useRef(false);
   const maxReconnectAttempts = 10;
-  const baseDelay = 1000; // 1 second
+  const baseDelay = 1000;
 
   useEffect(() => {
     if (!boardId || !token) {
       return;
     }
 
+    isCleaningUpRef.current = false;
+
     const connect = () => {
+      // Don't connect if we're cleaning up or already have an active connection
+      if (isCleaningUpRef.current) return;
+      if (socketRef.current?.readyState === WebSocket.OPEN ||
+          socketRef.current?.readyState === WebSocket.CONNECTING) {
+        return;
+      }
+
       try {
         const ws = new WebSocket(`${WS_URL}?boardId=${boardId}&token=${encodeURIComponent(token)}`);
 
         ws.onopen = () => {
+          if (isCleaningUpRef.current) {
+            ws.close();
+            return;
+          }
           console.log('WebSocket connected');
           setIsConnected(true);
           reconnectAttemptsRef.current = 0;
         };
 
         ws.onclose = () => {
+          // Don't reconnect if we're intentionally cleaning up
+          if (isCleaningUpRef.current) {
+            return;
+          }
+
           console.log('WebSocket disconnected');
           setIsConnected(false);
           socketRef.current = null;
@@ -50,8 +69,8 @@ export function useWebSocket({ boardId, token, onMessage }: UseWebSocketOptions)
           }
         };
 
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+        ws.onerror = () => {
+          // Errors are followed by onclose, so no action needed here
         };
 
         ws.onmessage = (event) => {
@@ -73,13 +92,16 @@ export function useWebSocket({ boardId, token, onMessage }: UseWebSocketOptions)
 
     // Cleanup on unmount or when dependencies change
     return () => {
+      isCleaningUpRef.current = true;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
       if (socketRef.current) {
         socketRef.current.close();
         socketRef.current = null;
       }
+      reconnectAttemptsRef.current = 0;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, token]);

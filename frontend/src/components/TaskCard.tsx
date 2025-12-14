@@ -26,9 +26,10 @@ interface TaskCardProps {
   lock?: { username: string; mine: boolean };
   onRequestLock?: (resourceType: string, resourceId: number) => void;
   onReleaseLock?: (resourceType: string, resourceId: number) => void;
+  onClearLock?: (resourceType: string, resourceId: number) => void;
 }
 
-export function TaskCard({ task, isDragging = false, isEditing = false, onSave, onCancel, onDelete, onEdit, lock, onRequestLock, onReleaseLock }: TaskCardProps) {
+export function TaskCard({ task, isDragging = false, isEditing = false, onSave, onCancel, onDelete, onEdit, lock, onRequestLock, onReleaseLock, onClearLock }: TaskCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalEditTitle, setModalEditTitle] = useState(task.title);
   const [modalEditDescription, setModalEditDescription] = useState(task.description || "");
@@ -165,8 +166,13 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
       <Dialog open={isModalOpen} onOpenChange={(open) => {
         setIsModalOpen(open);
         if (!open) {
-          if (isEditingInModal && onReleaseLock) {
-            onReleaseLock('task', parseInt(task.id)); // Release lock when closing modal during edit
+          if (isEditingInModal) {
+            if (onReleaseLock) {
+              onReleaseLock('task', parseInt(task.id));
+            }
+            if (onClearLock) {
+              onClearLock('task', parseInt(task.id));
+            }
           }
           setIsEditingInModal(false);
         }
@@ -235,7 +241,10 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
                       onSave(modalEditTitle.trim(), modalEditDescription.trim());
                       setIsEditingInModal(false);
                       if (onReleaseLock) {
-                        onReleaseLock('task', parseInt(task.id)); // Release lock after save
+                        onReleaseLock('task', parseInt(task.id));
+                      }
+                      if (onClearLock) {
+                        onClearLock('task', parseInt(task.id)); // Clear local lock state immediately
                       }
                     }
                   }}
@@ -249,7 +258,10 @@ export function TaskCard({ task, isDragging = false, isEditing = false, onSave, 
                     setModalEditDescription(task.description || "");
                     setIsEditingInModal(false);
                     if (onReleaseLock) {
-                      onReleaseLock('task', parseInt(task.id)); // Release lock on cancel
+                      onReleaseLock('task', parseInt(task.id));
+                    }
+                    if (onClearLock) {
+                      onClearLock('task', parseInt(task.id)); // Clear local lock state immediately
                     }
                   }}
                   variant="outline"

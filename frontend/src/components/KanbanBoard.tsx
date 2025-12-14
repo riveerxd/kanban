@@ -40,23 +40,23 @@ export interface ColumnType {
   position: number;
 }
 
-export function KanbanBoard() {
+interface KanbanBoardProps {
+  boardId: number;
+}
+
+export function KanbanBoard({ boardId }: KanbanBoardProps) {
   const { user, logout, isLoading, token } = useAuth();
   const router = useRouter();
   const [columns, setColumns] = useState<ColumnType[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const [boardId, setBoardId] = useState<number | null>(null);
-  const [boards, setBoards] = useState<api.BoardDto[]>([]);
   const [boardOwnerId, setBoardOwnerId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState("");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [showBoardSelector, setShowBoardSelector] = useState(false);
   const [isRenamingBoard, setIsRenamingBoard] = useState(false);
   const [boardTitle, setBoardTitle] = useState("");
-  const creatingBoardRef = useRef(false);
   const columnsRef = useRef<ColumnType[]>([]);
   const [locks, setLocks] = useState<Record<string, {username: string, mine: boolean}>>({});
 
@@ -67,7 +67,26 @@ export function KanbanBoard() {
 
   // WebSocket message handler
   const handleWebSocketMessage = useCallback((message: any) => {
-    // Ignore messages from current user (already applied optimistically)
+    // Handle lock messages for current user first (these are personal responses)
+    if (message.type === 'lock.granted' || message.type === 'lock.denied') {
+      switch (message.type) {
+        case 'lock.granted': {
+          const { resourceType, resourceId } = message.payload;
+          setLocks(prev => ({
+            ...prev,
+            [`${resourceType}_${resourceId}`]: { username: user?.username || 'You', mine: true }
+          }));
+          break;
+        }
+        case 'lock.denied': {
+          alert(`Locked by ${message.payload.lockedBy}`);
+          break;
+        }
+      }
+      return;
+    }
+
+    // Ignore other messages from current user (already applied optimistically)
     if (message.userId === user?.id) {
       return;
     }
@@ -187,17 +206,6 @@ export function KanbanBoard() {
         break;
       }
 
-      case 'lock.granted': {
-        const { resourceType, resourceId } = message.payload;
-        setLocks(prev => ({
-          ...prev,
-          [`${resourceType}_${resourceId}`]: { username: user?.username || 'You', mine: true }
-        }));
-        // Note: We don't auto-set editingTaskId here anymore
-        // TaskCard's modal will handle entering edit mode via its own useEffect
-        break;
-      }
-
       case 'lock.acquired': {
         const { resourceType, resourceId, username, userId } = message.payload;
         // Only update if it's not the current user (they already got lock.granted)
@@ -219,11 +227,6 @@ export function KanbanBoard() {
         });
         break;
       }
-
-      case 'lock.denied': {
-        alert(`Locked by ${message.payload.lockedBy}`);
-        break;
-      }
     }
   }, [user?.id, user?.username, boardId, token]);
 
@@ -242,124 +245,34 @@ export function KanbanBoard() {
     })
   );
 
-  const switchBoard = async (newBoardId: number) => {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      const board = await api.getBoard(token, newBoardId);
-      setBoardId(board.id);
-      setBoardOwnerId(board.userId);
-      setBoardTitle(board.title);
-      localStorage.setItem("currentBoardId", board.id.toString());
-      setColumns(
-        board.columns.map((col) => ({
-          id: col.id.toString(),
-          title: col.title,
-          position: col.position,
-          tasks: col.tasks.map((task) => ({
-            id: task.id.toString(),
-            title: task.title,
-            description: task.description,
-            columnId: col.id.toString(),
-            position: task.position,
-            createdAt: task.createdAt,
-            updatedAt: task.updatedAt,
-          })),
-        }))
-      );
-      setShowBoardSelector(false);
-    } catch (error) {
-      console.error("Failed to switch board:", error);
-      logout();
-      router.push("/login");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Load board data
   useEffect(() => {
     const loadBoard = async () => {
-      if (!token) return;
+      if (!token || !boardId) return;
 
       try {
-        const fetchedBoards = await api.getBoards(token);
-        setBoards(fetchedBoards);
-
-        if (fetchedBoards.length === 0) {
-          // Prevent double creation in React StrictMode
-          if (creatingBoardRef.current) return;
-          creatingBoardRef.current = true;
-
-          // Create a default board
-          const newBoard = await api.createBoard(token, { title: "My Kanban Board" });
-          setBoardId(newBoard.id);
-          localStorage.setItem("currentBoardId", newBoard.id.toString());
-
-          // Create default columns
-          await api.createColumn(token, newBoard.id, { title: "To Do", position: 0 });
-          await api.createColumn(token, newBoard.id, { title: "In Progress", position: 1 });
-          await api.createColumn(token, newBoard.id, { title: "Done", position: 2 });
-
-          // Reload board
-          const updatedBoard = await api.getBoard(token, newBoard.id);
-          setBoardId(updatedBoard.id);
-          setBoardOwnerId(updatedBoard.userId);
-          setBoardTitle(updatedBoard.title);
-          setColumns(
-            updatedBoard.columns.map((col) => ({
-              id: col.id.toString(),
-              title: col.title,
-              position: col.position,
-              tasks: col.tasks.map((task) => ({
-                id: task.id.toString(),
-                title: task.title,
-                description: task.description,
-                columnId: col.id.toString(),
-                position: task.position,
-                createdAt: task.createdAt,
-                updatedAt: task.updatedAt,
-              })),
-            }))
-          );
-        } else {
-          // Try to load saved board, otherwise load the latest (highest ID)
-          const savedBoardId = localStorage.getItem("currentBoardId");
-          let board = savedBoardId
-            ? fetchedBoards.find(b => b.id === parseInt(savedBoardId))
-            : null;
-
-          // If saved board not found, use the one with highest ID (most recent)
-          if (!board) {
-            board = fetchedBoards.reduce((latest, current) =>
-              current.id > latest.id ? current : latest
-            );
-          }
-
-          setBoardId(board.id);
-          setBoardOwnerId(board.userId);
-          setBoardTitle(board.title);
-          localStorage.setItem("currentBoardId", board.id.toString());
-          setColumns(
-            board.columns.map((col) => ({
-              id: col.id.toString(),
-              title: col.title,
-              position: col.position,
-              tasks: col.tasks.map((task) => ({
-                id: task.id.toString(),
-                title: task.title,
-                description: task.description,
-                columnId: col.id.toString(),
-                position: task.position,
-              })),
-            }))
-          );
-        }
+        const board = await api.getBoard(token, boardId);
+        setBoardOwnerId(board.userId);
+        setBoardTitle(board.title);
+        setColumns(
+          board.columns.map((col) => ({
+            id: col.id.toString(),
+            title: col.title,
+            position: col.position,
+            tasks: col.tasks.map((task) => ({
+              id: task.id.toString(),
+              title: task.title,
+              description: task.description,
+              columnId: col.id.toString(),
+              position: task.position,
+              createdAt: task.createdAt,
+              updatedAt: task.updatedAt,
+            })),
+          }))
+        );
       } catch (error) {
         console.error("Failed to load board:", error);
-        logout();
-        router.push("/login");
+        router.push("/dashboard");
       } finally {
         setLoading(false);
       }
@@ -368,7 +281,7 @@ export function KanbanBoard() {
     if (!isLoading && user && token) {
       loadBoard();
     }
-  }, [isLoading, user, token]);
+  }, [isLoading, user, token, boardId, router]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -642,8 +555,13 @@ export function KanbanBoard() {
         }))
       );
 
-      // Release lock after edit
+      // Release lock after edit and clear local lock state immediately
       releaseLock('task', parseInt(taskId));
+      setLocks(prev => {
+        const newLocks = { ...prev };
+        delete newLocks[`task_${taskId}`];
+        return newLocks;
+      });
       setEditingTaskId(null);
     } catch (error) {
       console.error("Failed to update task:", error);
@@ -683,12 +601,16 @@ export function KanbanBoard() {
     }
   };
 
-  // Redirect to login if not authenticated
+  // Redirect to dashboard if not authenticated
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login");
     }
   }, [isLoading, user, router]);
+
+  const handleBack = () => {
+    router.push("/dashboard");
+  };
 
   if (isLoading || loading) {
     return (
@@ -723,13 +645,18 @@ export function KanbanBoard() {
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border shadow-sm">
         <div className="w-full px-6 py-4">
           <div className="flex items-center justify-between">
-            {/* Logo and Title */}
+            {/* Back Button and Title */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
-                <svg className="w-6 h-6 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              <Button
+                onClick={handleBack}
+                variant="ghost"
+                size="sm"
+                className="h-10 w-10 p-0 hover:bg-muted"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-              </div>
+              </Button>
               <div>
                 {isRenamingBoard ? (
                   <div className="flex items-center gap-2">
@@ -740,7 +667,6 @@ export function KanbanBoard() {
                         if (e.key === "Enter") handleRenameBoard();
                         if (e.key === "Escape") {
                           setIsRenamingBoard(false);
-                          setBoardTitle(boards.find(b => b.id === boardId)?.title || "");
                         }
                       }}
                       className="h-8 text-xl font-bold"
@@ -751,10 +677,7 @@ export function KanbanBoard() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                     </Button>
-                    <Button onClick={() => {
-                      setIsRenamingBoard(false);
-                      setBoardTitle(boards.find(b => b.id === boardId)?.title || "");
-                    }} size="sm" variant="ghost">
+                    <Button onClick={() => setIsRenamingBoard(false)} size="sm" variant="ghost">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
@@ -765,18 +688,16 @@ export function KanbanBoard() {
                     <h1 className="text-xl font-bold text-foreground tracking-tight">
                       {boardTitle || "Kanban Board"}
                     </h1>
-                    {boardId && (
-                      <Button
-                        onClick={() => setIsRenamingBoard(true)}
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0 hover:bg-muted"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                      </Button>
-                    )}
+                    <Button
+                      onClick={() => setIsRenamingBoard(true)}
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 hover:bg-muted"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </Button>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">Organize your tasks</p>
@@ -786,74 +707,29 @@ export function KanbanBoard() {
             {/* User Info and Actions */}
             <div className="flex items-center gap-3">
               {/* WebSocket Connection Status */}
-              {boardId && (
-                isConnected ? (
-                  <div className="flex items-center gap-2 text-green-600 text-sm">
-                    <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
-                    <span className="hidden sm:inline">Live</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-yellow-600 text-sm">
-                    <span className="w-2 h-2 bg-yellow-600 rounded-full" />
-                    <span className="hidden sm:inline">Reconnecting...</span>
-                  </div>
-                )
-              )}
-
-              {/* Board Selector */}
-              {boards.length > 1 && boardId && (
-                <div className="relative">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowBoardSelector(!showBoardSelector)}
-                    className="min-w-[120px] justify-between"
-                  >
-                    <span className="truncate">
-                      {boards.find(b => b.id === boardId)?.title || "Board"}
-                    </span>
-                    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </Button>
-                  {showBoardSelector && (
-                    <div className="absolute right-0 mt-2 w-64 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden">
-                      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto">
-                        {boards.map((board) => (
-                          <button
-                            key={board.id}
-                            onClick={() => switchBoard(board.id)}
-                            className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
-                              board.id === boardId
-                                ? "bg-primary text-primary-foreground"
-                                : "hover:bg-muted"
-                            }`}
-                          >
-                            <div className="font-medium truncate">{board.title}</div>
-                            <div className="text-xs opacity-80">
-                              {board.userId === user?.id ? "Owner" : "Shared with you"}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {isConnected ? (
+                <div className="flex items-center gap-2 text-green-600 text-sm">
+                  <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
+                  <span className="hidden sm:inline">Live</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-yellow-600 text-sm">
+                  <span className="w-2 h-2 bg-yellow-600 rounded-full" />
+                  <span className="hidden sm:inline">Reconnecting...</span>
                 </div>
               )}
 
               {/* Share Button */}
-              {boardId && (
-                <Button
-                  onClick={() => setIsShareModalOpen(true)}
-                  variant="outline"
-                  size="sm"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  Share
-                </Button>
-              )}
+              <Button
+                onClick={() => setIsShareModalOpen(true)}
+                variant="outline"
+                size="sm"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                Share
+              </Button>
 
               <div className="hidden sm:flex items-center gap-3 px-4 py-2 rounded-lg bg-muted/50">
                 <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm">
@@ -902,6 +778,13 @@ export function KanbanBoard() {
                 locks={locks}
                 onRequestLock={requestLock}
                 onReleaseLock={releaseLock}
+                onClearLock={(resourceType, resourceId) => {
+                  setLocks(prev => {
+                    const newLocks = { ...prev };
+                    delete newLocks[`${resourceType}_${resourceId}`];
+                    return newLocks;
+                  });
+                }}
               />
             ))}
 
@@ -957,7 +840,7 @@ export function KanbanBoard() {
       </div>
 
       {/* Share Board Modal */}
-      {boardId && boardOwnerId !== null && (
+      {boardOwnerId !== null && (
         <ShareBoardModal
           isOpen={isShareModalOpen}
           onClose={() => setIsShareModalOpen(false)}
